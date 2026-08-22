@@ -17,7 +17,9 @@ since neither depends on the other:
 - The **designer** subagent, to write the design directory from the spec.
 
 If `docs/adr/0001-stack.md` does not exist, run the architect **alone** first to
-produce it — the stack decision blocks everything, including the design.
+produce it — the stack decision blocks everything, including the design. Its
+first act must be to ask the CPO whether the stack is already decided; relay
+that question and wait for the answer before letting it proceed.
 
 When both return, cross-check their outputs and report any contradiction to the
 CPO: an interface the design needs that the ADR does not provide, or a state the
