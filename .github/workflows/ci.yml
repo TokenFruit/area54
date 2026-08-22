@@ -1,0 +1,127 @@
+name: CI
+
+# The team's only trustworthy quality signal. Agents report that tests pass;
+# this proves it. Never weaken a check here to unblock a merge.
+#
+# NOTE for the devops agent: the stack is undecided (see docs/adr/0001-stack.md).
+# This workflow auto-detects Node or Python and runs whatever exists. Once
+# ADR-0001 lands, replace the detection with the real commands from CLAUDE.md,
+# and pin every third-party action to a commit SHA.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  governance:
+    name: Governance
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PR must link a spec
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if printf '%s' "$BODY" | grep -qE 'docs/specs/TF-[0-9]{3}'; then
+            echo "Spec linked."
+            exit 0
+          fi
+          # Chores and tooling changes have no spec. They must say so explicitly,
+          # with a reason, so that skipping the gate is a deliberate act.
+          if printf '%s' "$BODY" | grep -qE '^No spec: .+'; then
+            echo "::notice::Spec gate waived: $(printf '%s' "$BODY" | grep -oE '^No spec: .+')"
+            exit 0
+          fi
+          echo "::error::PR body must link its spec (docs/specs/TF-NNN-*.md), or state 'No spec: <reason>'. See CLAUDE.md."
+          exit 1
+
+      - name: No secrets in the diff
+        run: |
+          git fetch --no-tags --depth=50 origin "${{ github.base_ref }}"
+          if git diff "origin/${{ github.base_ref }}"...HEAD -U0 \
+             | grep -nEi '^\+.*(api[_-]?key|secret|password|private[_-]?key|BEGIN [A-Z ]*PRIVATE KEY|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,})' \
+             | grep -vEi '(example|placeholder|dummy|fake|test|process\.env|os\.environ|getenv|\$\{)'; then
+            echo "::error::Possible secret in the diff. Move it to the environment."
+            exit 1
+          fi
+          echo "No secrets detected."
+
+  checks:
+    name: Typecheck / Lint / Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect stack
+        id: detect
+        run: |
+          if [ -f package.json ]; then echo "node=true" >> "$GITHUB_OUTPUT"; fi
+          if [ -f pyproject.toml ] || [ -f requirements.txt ]; then echo "python=true" >> "$GITHUB_OUTPUT"; fi
+          if [ ! -f package.json ] && [ ! -f pyproject.toml ] && [ ! -f requirements.txt ]; then
+            echo "::notice::No application code yet — stack undecided (ADR-0001)."
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.detect.outputs.node == 'true'
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-python@v5
+        if: steps.detect.outputs.python == 'true'
+        with:
+          python-version: '3.12'
+
+      # --- Node ---
+      - name: Install (node)
+        if: steps.detect.outputs.node == 'true'
+        run: npm ci || npm install
+
+      - name: Typecheck (node)
+        if: steps.detect.outputs.node == 'true'
+        run: npm run --if-present typecheck
+
+      - name: Lint (node)
+        if: steps.detect.outputs.node == 'true'
+        run: npm run --if-present lint
+
+      - name: Test (node)
+        if: steps.detect.outputs.node == 'true'
+        run: npm run --if-present test
+
+      - name: Build (node)
+        if: steps.detect.outputs.node == 'true'
+        run: npm run --if-present build
+
+      # --- Python ---
+      - name: Install (python)
+        if: steps.detect.outputs.python == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f pyproject.toml ]; then pip install -e ".[dev]" || pip install -e .; fi
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Lint (python)
+        if: steps.detect.outputs.python == 'true'
+        run: |
+          if command -v ruff >/dev/null; then ruff check .; else echo "ruff not installed, skipping"; fi
+
+      - name: Typecheck (python)
+        if: steps.detect.outputs.python == 'true'
+        run: |
+          if command -v mypy >/dev/null; then mypy .; else echo "mypy not installed, skipping"; fi
+
+      - name: Test (python)
+        if: steps.detect.outputs.python == 'true'
+        run: |
+          if command -v pytest >/dev/null; then pytest -q; else echo "pytest not installed, skipping"; fi
