@@ -1,7 +1,12 @@
 # Token Fruit — area54
 
-Token Fruit's product codebase, built by a virtual agentic engineering team
-running in Claude Code.
+**A virtual software development team powered by agentic AI**, which Token Fruit
+deploys onto its product repositories — Gempli (`area53`), alloqo, flozeno,
+izenesis, and whatever follows.
+
+The team is the product. area54 builds itself using itself: every change here
+goes through the same seven roles and two approval gates it ships to everyone
+else. Stack decision: [`docs/adr/0001-stack.md`](docs/adr/0001-stack.md).
 
 ## The team
 
