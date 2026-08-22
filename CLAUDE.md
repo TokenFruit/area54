@@ -42,6 +42,14 @@ that executes on a developer's machine or in CI.
 A target repo supplies its own `CLAUDE.md`. area54 ships the roles; the repo
 supplies the context.
 
+**How stack decisions get made.** The Architect never simply picks. It asks the
+CPO first whether the stack is already decided, then either records the CPO's
+choice as the Decision and suggests changes separately — each naming a concrete
+cost, not a preference — or, if the stack is open, chooses on its own expertise
+and defends it against the two strongest alternatives it rejected. Either way
+the CPO approves the ADR before it is accepted. See
+[`.claude/agents/architect.md`](.claude/agents/architect.md).
+
 ## Commands
 
 | Purpose | Command |
