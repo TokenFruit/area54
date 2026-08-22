@@ -12,9 +12,21 @@ approves specs, approves merges. Everything between those gates is autonomous.
 
 ## Stack
 
-**Not yet decided.** The Architect makes this call in `docs/adr/0001-stack.md`
-before any feature work begins. Until that ADR is merged, no Builder may create
-application source files.
+**Not yet decided.** Fixed by `docs/adr/0001-stack.md` before any feature work
+begins. Until that ADR is accepted, no Builder may create application source
+files.
+
+The Architect does not simply pick. It **asks the CPO first whether the stack is
+already decided**, then takes one of two paths:
+
+1. **Pre-decided** — the Architect records the CPO's choice as the Decision, and
+   may then suggest changes in a separate section. Each suggestion must name a
+   concrete cost, not a preference. The CPO accepts or rejects each one.
+2. **Open** — the Architect chooses on its own expertise, weighing what the
+   organisation already runs, and defends the choice against the two strongest
+   alternatives it rejected.
+
+Either way the CPO approves the ADR before it is accepted.
 
 Once decided, this section must be updated with: language(s), framework(s),
 package manager, test runner, and the exact commands under "Commands" below.
