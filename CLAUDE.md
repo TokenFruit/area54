@@ -6,44 +6,65 @@ prompt, this file wins.
 
 ## What this repo is
 
-Token Fruit's product codebase, built and maintained by a virtual agentic team.
+**area54 is a virtual software development team powered by agentic AI**, which
+Token Fruit deploys onto its other product repositories — Gempli (`area53`),
+alloqo, flozeno, izenesis, and whatever follows.
+
+The team is the product. Read that twice before changing anything: the agents,
+commands, and policies in this repo are not scaffolding around the deliverable,
+they *are* the deliverable.
+
+This has a consequence that catches people out. This repo is both the team and
+the team's first customer — area54 builds itself using itself. When you change
+an agent definition here, you are changing the tool you are currently holding.
+
 The human owner acts as Central Product Officer (CPO): sets the roadmap,
 approves specs, approves merges. Everything between those gates is autonomous.
 
 ## Stack
 
-**Not yet decided.** Fixed by `docs/adr/0001-stack.md` before any feature work
-begins. Until that ADR is accepted, no Builder may create application source
-files.
+Decided in [`docs/adr/0001-stack.md`](docs/adr/0001-stack.md). area54 has **no
+server, no database, and nothing to host** — it ships as a Claude Code plugin
+that executes on a developer's machine or in CI.
 
-The Architect does not simply pick. It **asks the CPO first whether the stack is
-already decided**, then takes one of two paths:
+| | |
+| --- | --- |
+| Distribution | Claude Code plugin, from a private marketplace repo |
+| Agent artefacts | Markdown with YAML frontmatter; JSON manifest |
+| Tooling language | Python 3.12, managed with `uv` |
+| Lint / format | `ruff` |
+| Types | `mypy --strict` |
+| Unit tests | `pytest` — deterministic checks over agent definitions |
+| Behavioural tests | `claude plugin eval` — scored over repeated runs |
+| CI | GitHub Actions |
+| Runtime | none |
 
-1. **Pre-decided** — the Architect records the CPO's choice as the Decision, and
-   may then suggest changes in a separate section. Each suggestion must name a
-   concrete cost, not a preference. The CPO accepts or rejects each one.
-2. **Open** — the Architect chooses on its own expertise, weighing what the
-   organisation already runs, and defends the choice against the two strongest
-   alternatives it rejected.
+A target repo supplies its own `CLAUDE.md`. area54 ships the roles; the repo
+supplies the context.
 
-Either way the CPO approves the ADR before it is accepted.
-
-Once decided, this section must be updated with: language(s), framework(s),
-package manager, test runner, and the exact commands under "Commands" below.
+**How stack decisions get made.** The Architect never simply picks. It asks the
+CPO first whether the stack is already decided, then either records the CPO's
+choice as the Decision and suggests changes separately — each naming a concrete
+cost, not a preference — or, if the stack is open, chooses on its own expertise
+and defends it against the two strongest alternatives it rejected. Either way
+the CPO approves the ADR before it is accepted. See
+[`.claude/agents/architect.md`](.claude/agents/architect.md).
 
 ## Commands
 
-<!-- Architect: fill these in as part of ADR-0001. CI depends on them. -->
-
-| Purpose    | Command             |
+| Purpose | Command |
 | ---------- | ------------------- |
-| Install    | _TBD_               |
-| Dev server | _TBD_               |
-| Typecheck  | _TBD_               |
-| Lint       | _TBD_               |
-| Unit tests | _TBD_               |
-| E2E tests  | _TBD_               |
-| Build      | _TBD_               |
+| Install | `uv sync` |
+| Lint | `uv run ruff check .` |
+| Format | `uv run ruff format .` |
+| Typecheck | `uv run mypy --strict .` |
+| Unit tests | `uv run pytest -q` |
+| Behavioural evals | `claude plugin eval` |
+| Build | none — the repo is the plugin |
+
+The Python toolchain is not yet scaffolded; the first Builder to need it creates
+`pyproject.toml`. `claude plugin eval` availability on this account is unverified
+— DevOps confirms it before CI depends on it.
 
 ## Definition of Done
 
