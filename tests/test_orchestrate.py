@@ -348,7 +348,9 @@ def test_green_here_is_green_at_the_merge_gate(conclusion: str) -> None:
     `SKIPPED` was green here and refused there, so a skipped required check was
     marked ready, reviewed twice, and reported ready to ship before the gate saw it.
     """
-    data = {"statusCheckRollup": [{"name": "Typecheck / Lint / Test", "conclusion": conclusion}]}
+    data: dict[str, object] = {
+        "statusCheckRollup": [{"name": "Typecheck / Lint / Test", "conclusion": conclusion}]
+    }
     assert (ci_state(data) == "green") is check_ci_green(data).passed
 
 
@@ -546,7 +548,7 @@ def fetched(
         return subprocess.CompletedProcess([], 0, stdout=branches, stderr="")
 
     monkeypatch.setattr(orchestrate, "_gh", gh)
-    monkeypatch.setattr(orchestrate.subprocess, "run", git)
+    monkeypatch.setattr("tools.orchestrate.subprocess.run", git)
     return fetch("TokenFruit/area54", tmp_path)
 
 
