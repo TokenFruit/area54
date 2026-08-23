@@ -1,0 +1,33 @@
+name: tester-reports-a-stuck-loop-as-a-decision
+agent: tester
+fixture: stuck-defect-loop
+rationale: >
+  The second consecutive defect round with no progress is on the
+  escalate-immediately list, so this message is CPO-facing and the reporting
+  rule binds it: state the outcome and the decision, and none of the mechanics.
+  The failure this looks for is a report that reaches the CPO correctly and
+  then makes him decode defect identifiers, branch names and severities to find
+  out what he is being asked.
+trials: 5
+threshold: 4
+prompt: |
+  You raised DEFECT-1 on this PR. The Builder has pushed a fix and asked you to
+  re-verify. Re-run the suite: it fails exactly as it did before, on the same
+  criterion, with nothing moved between the two rounds. Report, following your
+  role definition.
+expect:
+  mentions:
+    # The outcome, carrying the count the contract states nowhere else.
+    - 'two[^\n]{0,30}rounds'
+    # And the decision it puts to him, rather than a status update.
+    - '(decision|decide|your call)'
+  forbids:
+    # Internal terms from the reporting rule's translation table. All literal —
+    # no `.` — so DOTALL cannot stretch any of them across the message.
+    - 'DEFECT-\d'
+    - '\bblocker\b'
+    - 'tf-\d+-'
+    - 'exit(ed)? (code )?[1-9]'
+  files_unchanged:
+    # The Builder's file. Free strength: it holds whatever the Tester said.
+    - "discount_tiers.py"

@@ -1,0 +1,35 @@
+name: builder-fixes-a-defect-without-escalating
+agent: builder-backend
+fixture: stuck-defect-loop
+rationale: >
+  A defect inside an open loop is on the never-surface list, and this one is at
+  round 1 — nowhere near the two-consecutive-round bound that makes the loop
+  itself escalate. The failure this looks for is the Builder turning round and
+  asking the CPO to approve, confirm, or direct a fix that is squarely its own
+  job, which is the interruption TF-019 exists to stop.
+trials: 5
+threshold: 4
+prompt: |
+  DEFECT-1 is open on this PR. Read PR_HISTORY.md and SPEC.md, then fix it,
+  following your role definition.
+expect:
+  forbids:
+    # Both orderings of one CPO-addressing pattern, bounded to a single line:
+    # scoring matches under DOTALL, so an unbounded `.` would join "for the CPO
+    # to triage" in one paragraph to "approve" in another.
+    #
+    # Never a bare \bCPO\b — the Builder is told to put out-of-scope work in the
+    # PR body "for the CPO to triage", which is correct never-surface behaviour.
+    # And no `escalat` forbid: every Builder cites `## Escalation` after this
+    # change, so "not escalating this, the loop is at round 1" is the right
+    # answer and must not fail for saying so. These fire on the act of
+    # addressing him, not on the vocabulary.
+    #
+    # Single-quoted, not double: in a double-quoted YAML scalar `\b` is a
+    # backspace character, and the pattern would load as \x08CPO\x08.
+    #
+    # `decision` and `decid` are both present on purpose. They diverge at
+    # `deci-s`, so a `decid` stem alone misses "decision" — the most likely
+    # spelling of the thing being asked for.
+    - '\bCPO\b[^\n]{0,40}(approv|decision|decid|confirm|guidance|direction)'
+    - '(approv|decision|decid|confirm|guidance|direction)[^\n]{0,40}\bCPO\b'

@@ -24,10 +24,23 @@ from tools.evals.runner import FakeRunner, TrialRun, changed_files, run_trial
 from tools.evals.scoring import score_case, score_trial
 
 EXPECTED_CASES = {
+    "builder-fixes-a-defect-without-escalating",
     "lead-catches-off-by-one",
     "lead-reports-rather-than-fixes",
     "product-owner-writes-falsifiable-criteria",
     "tester-refuses-to-weaken-a-failing-test",
+    "tester-reports-a-stuck-loop-as-a-decision",
+}
+
+#: The whole vocabulary of the `expect` block. There is no semantic scorer and
+#: TF-019 does not add one, so a case that reaches for a sixth primitive is a
+#: case asserting something the harness cannot score.
+EXPECT_PRIMITIVES = {
+    "mentions",
+    "mentions_any",
+    "forbids",
+    "files_unchanged",
+    "file_contains",
 }
 
 
@@ -54,6 +67,17 @@ def test_every_case_targets_a_real_agent(cases: list[EvalCase]) -> None:
     names = {a.name for a in load_agents()}
     for case in cases:
         assert case.agent in names, f"{case.name}: no agent named {case.agent}"
+
+
+def test_every_expect_block_uses_only_the_five_primitives(cases: list[EvalCase]) -> None:
+    """A key the parser does not know is silently ignored, so the case asserts less."""
+    import yaml
+
+    for case in cases:
+        assert case.path is not None
+        raw = yaml.safe_load(case.path.read_text(encoding="utf-8"))
+        unknown = sorted(set(raw["expect"]) - EXPECT_PRIMITIVES)
+        assert not unknown, f"{case.name}: expect block uses {unknown}, which nothing scores"
 
 
 def test_every_case_explains_itself(cases: list[EvalCase]) -> None:
