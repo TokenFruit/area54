@@ -248,6 +248,33 @@ def test_a_lead_approval_with_no_counts_still_approves() -> None:
     assert next_action(item()).stage == "Ready to ship"
 
 
+def test_a_merged_pr_is_not_work_for_a_builder() -> None:
+    """TF-019 merged in #23 and was ticked into `Done` hours later.
+
+    For that window the item read "branch exists, no PR" and `--run` would have
+    dispatched `builder-backend` to build what was already in `main`.
+    """
+    lagging = item(merged_pr=23, branch="tf-019-escalation-build", pr={})
+    action = next_action(lagging)
+    assert action.stage == "Merged"
+    assert action.kind == "cpo"
+    assert "#23" in action.blocked_on
+    with pytest.raises(OrchestratorError, match="not dispatchable"):
+        dispatch(action, lagging, "TokenFruit/area54")
+
+
+def test_an_open_pr_outranks_an_older_merged_one() -> None:
+    """A second round on an item is in review, not finished."""
+    reopened = item(merged_pr=23, pr=pr(comments=[]))
+    assert next_action(reopened).agent == "lead"
+
+
+def test_a_merged_pr_does_not_skip_a_stage_the_item_has_not_reached() -> None:
+    """`tf-020-groom` merged the spec, not the feature. The clause is the Builder's."""
+    groomed = item(merged_pr=25, has_adr=False, pr={})
+    assert next_action(groomed).agent == "architect"
+
+
 def test_a_green_draft_is_marked_ready() -> None:
     action = next_action(item(pr=pr(isDraft=True)))
     assert action.kind == "ready"
@@ -433,13 +460,15 @@ def fetched(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     open_prs: list[dict[str, object]] | None = None,
+    merged_prs: list[dict[str, object]] | None = None,
     branches: str = "",
 ) -> list[Item]:
     """`fetch` over a stubbed `gh` and `git`. No process is started."""
 
     def gh(args: list[str]) -> str:
         if args[:2] == ["pr", "list"]:
-            return json.dumps(open_prs or [])
+            state = args[args.index("--state") + 1]
+            return json.dumps((open_prs if state == "open" else merged_prs) or [])
         return "[]"
 
     def git(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -506,6 +535,23 @@ def test_a_paused_item_still_has_its_stalls_named() -> None:
     assert next_action(paused).kind == "wait"
     assert stalls(paused) == ["CI green and open for review, but no Lead or Tester verdict"]
     assert in_flight([paused]) == [paused]
+
+
+def test_a_merged_pr_is_read_off_its_branch_like_an_open_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The signal that was unreadable: `fetch` only ever asked for open PRs."""
+    items = fetched(
+        monkeypatch,
+        tmp_path,
+        branches="tf-019-escalation-build\ntf-019-design",
+        merged_prs=[
+            {"number": 20, "headRefName": "tf-019-escalation-contract"},
+            {"number": 23, "headRefName": "tf-019-escalation-build"},
+            {"number": 28, "headRefName": "chore/roadmap-orchestrator"},
+        ],
+    )
+    assert [(i.tf, i.merged_pr) for i in items] == [("TF-019", 23)]
 
 
 def test_one_pr_on_an_item_is_the_item_s_pr(

@@ -69,6 +69,8 @@ class Item:
     #: The roadmap section this item sits under, or None if the roadmap has no
     #: line for it. `Done` outranks every other signal; only `Now` is dispatched.
     section: str | None = None
+    #: The newest merged PR whose branch names this item, if there is one.
+    merged_pr: int | None = None
     branch: str | None = None
     pr: dict[str, object] = field(default_factory=dict)
 
@@ -198,6 +200,17 @@ def fetch(repo: str, root: Path = REPO_ROOT) -> list[Item]:
         else:
             loose.append(pr)
 
+    # A merged PR on the item's branch is the code already being in `main`, and
+    # the roadmap always lags a merge: TF-019 merged in #23 and was ticked into
+    # `Done` hours later. `--state open` could not see it, so for that whole
+    # window the item read "branch exists, no PR" and `--run` would have sent a
+    # Builder at finished work. Highest number wins, as with the open ones.
+    merged = ["pr", "list", "--repo", repo, "--state", "merged", "--json", "number,headRefName"]
+    shipped: dict[str, int] = {}
+    for pr in sorted(json.loads(_gh(merged)), key=lambda p: int(p["number"])):
+        if key := owning_item(pr):
+            shipped[key] = int(pr["number"])
+
     # An item in `Now` is on the board before anything else exists for it — that
     # is how `Needs spec` is reached before the code rather than after it, and
     # TF-003 sat in `Now` invisible to `status` and to `next`.
@@ -211,6 +224,7 @@ def fetch(repo: str, root: Path = REPO_ROOT) -> list[Item]:
             spec_waived=bool(NO_SPEC_WAIVER.search(str(prs.get(key, {}).get("body") or ""))),
             has_adr=key in adrs,
             section=sections.get(key),
+            merged_pr=shipped.get(key),
             branch=branches.get(key),
             pr=prs.get(key, {}),
         )
@@ -403,6 +417,15 @@ def next_action(item: Item) -> Action:
             "agent",
             "architect",
             f"Write the ADR for {item.tf}, following .claude/commands/design.md.",
+        )
+    if not pr and item.merged_pr:
+        # Merged is not ticked, and only the CPO ticks. Reported, never
+        # dispatched: whatever else is true, this item's code is in `main` and
+        # asking a Builder to write it again is the one wrong answer.
+        return Action(
+            "Merged",
+            f"#{item.merged_pr} is merged; the roadmap's `Done` section has not caught up",
+            "cpo",
         )
     if not pr:
         return Action(
