@@ -17,9 +17,11 @@ from tools.agents import (
     SEQUENCE,
     Agent,
     AgentDefinitionError,
+    check_closes_by_naming_its_final_message,
     check_declares_its_place_in_the_sequence,
     check_model_is_pinned,
     check_role_tool_policy,
+    check_states_its_stop_conditions,
     check_tools_are_known,
     load_agents,
     parse_agent,
@@ -238,3 +240,52 @@ def test_an_agent_missing_its_sequence_section_is_caught(tmp_path: Path) -> None
     failures = check_declares_its_place_in_the_sequence(parse_agent(bad))
     assert len(failures) == 1
     assert "no '## Where you sit in the sequence' section" in failures[0]
+
+
+# --- TF-019: stop conditions and the closing line -------------------------
+
+
+def _definition(tmp_path: Path, body: str) -> Agent:
+    path = tmp_path / "lead.md"
+    path.write_text(
+        "---\nname: lead\ndescription: d\ntools: Read, Grep, Bash\n"
+        f"model: claude-opus-5\n---\n{body}",
+        encoding="utf-8",
+    )
+    return parse_agent(path)
+
+
+def test_every_agent_states_its_stop_conditions(agents: list[Agent]) -> None:
+    """Criterion 7: without them an agent works a problem until it runs dry."""
+    for agent in agents:
+        assert check_states_its_stop_conditions(agent) == []
+
+
+def test_an_agent_missing_its_stop_conditions_is_caught(tmp_path: Path) -> None:
+    agent = _definition(tmp_path, "\nno stop conditions here\n\nYour final message: a verdict.\n")
+    failures = check_states_its_stop_conditions(agent)
+    assert len(failures) == 1
+    assert "lead.md: no '## Stop conditions' section" in failures[0]
+
+
+def test_every_agent_closes_by_naming_its_final_message(agents: list[Agent]) -> None:
+    """Criterion 7: the handoff is the last paragraph, in one recognisable form."""
+    for agent in agents:
+        assert check_closes_by_naming_its_final_message(agent) == []
+
+
+def test_an_agent_that_never_names_its_final_message_is_caught(tmp_path: Path) -> None:
+    agent = _definition(tmp_path, "\n## Stop conditions\n\nStop when stuck.\n")
+    failures = check_closes_by_naming_its_final_message(agent)
+    assert len(failures) == 1
+    assert "does not close with a 'Your final message:' line" in failures[0]
+
+
+def test_naming_a_final_message_mid_file_is_not_a_closing_line(tmp_path: Path) -> None:
+    """The looser substring test `product-owner.md:26` would have satisfied."""
+    agent = _definition(
+        tmp_path,
+        "\n## Stop conditions\n\nName the spec path in your final message: it is the handoff.\n\n"
+        "Then go and do something else entirely.\n",
+    )
+    assert len(check_closes_by_naming_its_final_message(agent)) == 1

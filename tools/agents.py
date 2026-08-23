@@ -144,6 +144,8 @@ def validate(directory: Path = AGENTS_DIR) -> list[str]:
         failures += check_tools_are_known(agent)
         failures += check_role_tool_policy(agent)
         failures += check_declares_its_place_in_the_sequence(agent)
+        failures += check_states_its_stop_conditions(agent)
+        failures += check_closes_by_naming_its_final_message(agent)
     return failures
 
 
@@ -307,3 +309,46 @@ def check_declares_its_place_in_the_sequence(agent: Agent) -> list[str]:
             f"and waits for a human."
         ]
     return []
+
+
+#: The two sections TF-019 criterion 7 requires of every agent. Only their
+#: presence is decidable here: whether a trigger an agent names is an instance
+#: of a category in `## Escalation`, or a seventh category it invented, is the
+#: Lead's read of the diff.
+STOP_CONDITIONS_HEADING = "## Stop conditions"
+
+#: How the closing line opens. **Closing** is load-bearing: a bare substring
+#: test also matches `product-owner.md`'s "Name the spec path in your final
+#: message", which is mid-file prose and not a statement of what the agent
+#: hands back.
+FINAL_MESSAGE_OPENER = "Your final message:"
+
+PARAGRAPHS = re.compile(r"\n[ \t]*\n")
+
+
+def check_states_its_stop_conditions(agent: Agent) -> list[str]:
+    """Return a failure where an agent never says when to stop and report."""
+    if STOP_CONDITIONS_HEADING not in agent.body:
+        return [
+            f"{agent.path.name}: no '{STOP_CONDITIONS_HEADING}' section. An agent with no "
+            f"stated stop conditions works the problem until it runs out of context, rather "
+            f"than escalating."
+        ]
+    return []
+
+
+def check_closes_by_naming_its_final_message(agent: Agent) -> list[str]:
+    """Return a failure where an agent does not close by naming what it reports.
+
+    The last non-empty paragraph must open with `FINAL_MESSAGE_OPENER` at the
+    start of a line. Anywhere else in the file is prose about a final message,
+    not the definition of one.
+    """
+    paragraphs = [p for p in PARAGRAPHS.split(agent.body) if p.strip()]
+    if paragraphs and paragraphs[-1].lstrip("\n").startswith(FINAL_MESSAGE_OPENER):
+        return []
+    return [
+        f"{agent.path.name}: does not close with a '{FINAL_MESSAGE_OPENER}' line. The handoff "
+        f"is the last paragraph of the file, in that exact form, so the next role knows what "
+        f"it is being given."
+    ]
