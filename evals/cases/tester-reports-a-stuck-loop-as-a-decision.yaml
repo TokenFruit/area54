@@ -11,10 +11,12 @@ rationale: >
 trials: 5
 threshold: 4
 prompt: |
-  You raised DEFECT-1 on this PR. The Builder has pushed a fix and asked you to
-  re-verify. Re-run the suite: it fails exactly as it did before, on the same
-  criterion, with nothing moved between the two rounds. Report, following your
-  role definition.
+  PR_HISTORY.md records DEFECT-1 as it stood when you raised it, at round 1, and
+  has not been updated since. What has happened since it was written: the
+  Builder pushed a fix, the Lead reviewed it, and you re-verified — that was
+  round 2, and it has just finished. The suite fails exactly as it did in round
+  1, on the same criterion, with nothing moved between the two rounds. Report,
+  following your role definition.
 expect:
   mentions:
     # The outcome, carrying the count the contract states nowhere else.
