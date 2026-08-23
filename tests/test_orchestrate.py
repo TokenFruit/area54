@@ -1,0 +1,251 @@
+"""Tests for the orchestrator.
+
+The published sequence was executed by a human deciding to comply with it, and
+in one day six steps were skipped. These pin the dispatch table — every state
+in it — and the three stalls that actually happened. Deciding is kept apart
+from fetching, so none of this touches a live `gh`.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from tools.orchestrate import (
+    Action,
+    Item,
+    OrchestratorError,
+    changes_requested,
+    ci_state,
+    dispatch,
+    in_flight,
+    next_action,
+    stalls,
+)
+
+GREEN = [{"name": "Typecheck / Lint / Test", "conclusion": "SUCCESS"}]
+LEAD_OK = "## Lead review\n\n**Verdict: Approve.** 0 blockers, 0 majors."
+LEAD_NO = "## Lead review\n\n**Changes requested.** 1 blocker."
+TESTER_OK = "## Tester report\n\n**Tester verdict: Pass** — 9/9 criteria covered."
+
+
+def pr(**overrides: object) -> dict[str, object]:
+    """A PR mid-review: open, green, both verdicts in, ready for the CPO."""
+    data: dict[str, object] = {
+        "number": 42,
+        "isDraft": False,
+        "statusCheckRollup": list(GREEN),
+        "commits": [{"committedDate": "2026-08-24T09:00:00Z"}],
+        "comments": [
+            {"body": LEAD_OK, "at": "2026-08-24T10:00:00Z"},
+            {"body": TESTER_OK, "at": "2026-08-24T10:05:00Z"},
+        ],
+    }
+    data.update(overrides)
+    return data
+
+
+def item(**overrides: object) -> Item:
+    """An item whose every earlier stage is satisfied, so a test breaks one."""
+    base: dict[str, object] = {
+        "tf": "TF-021",
+        "spec_status": "Approved",
+        "has_adr": True,
+        "branch": "tf-021-orchestrator",
+        "pr": pr(),
+    }
+    base.update(overrides)
+    return Item(**base)  # type: ignore[arg-type]
+
+
+# --- the dispatch table, state by state -------------------------------------
+
+
+def test_no_spec_goes_to_the_product_owner() -> None:
+    action = next_action(item(spec_status=None))
+    assert action.stage == "Needs spec"
+    assert action.agent == "product-owner"
+
+
+def test_a_cpo_spec_waiver_skips_both_the_spec_and_the_adr() -> None:
+    """`No spec: <reason>` in the PR body, the waiver the merge gate accepts."""
+    waived = item(spec_status=None, spec_waived=True, has_adr=False)
+    assert next_action(waived).stage == "Ready to ship"
+
+
+def test_a_draft_spec_waits_for_gate_one_and_dispatches_nobody() -> None:
+    action = next_action(item(spec_status="Draft"))
+    assert action.stage == "Awaiting approval"
+    assert action.kind == "cpo"
+
+
+def test_an_approved_spec_with_no_adr_goes_to_the_architect() -> None:
+    action = next_action(item(has_adr=False))
+    assert action.agent == "architect"
+    assert action.blocked_on == "spec approved, no ADR"
+
+
+def test_an_adr_with_no_branch_goes_to_a_builder() -> None:
+    action = next_action(item(branch=None, pr={}))
+    assert action.agent == "builder-backend"
+    assert action.blocked_on == "ADR written, no branch"
+
+
+def test_a_branch_with_no_pr_is_still_the_builders() -> None:
+    action = next_action(item(pr={}))
+    assert action.agent == "builder-backend"
+    assert action.blocked_on == "branch exists, no PR"
+
+
+def test_failing_ci_goes_back_to_the_builder() -> None:
+    action = next_action(item(pr=pr(statusCheckRollup=[{"conclusion": "FAILURE"}])))
+    assert action.agent == "builder-backend"
+    assert "CI is failing" in action.blocked_on
+
+
+def test_changes_requested_with_no_commit_since_goes_to_the_builder() -> None:
+    stale = pr(comments=[{"body": LEAD_NO, "at": "2026-08-24T10:00:00Z"}])
+    action = next_action(item(pr=stale))
+    assert action.stage == "Defect loop"
+    assert action.agent == "builder-backend"
+
+
+def test_a_commit_after_the_verdict_moves_the_loop_on() -> None:
+    fixed = pr(
+        comments=[{"body": LEAD_NO, "at": "2026-08-24T10:00:00Z"}],
+        commits=[{"committedDate": "2026-08-24T11:00:00Z"}],
+    )
+    assert not changes_requested(fixed)
+    assert next_action(item(pr=fixed)).stage == "In review"
+
+
+def test_a_green_draft_is_marked_ready() -> None:
+    action = next_action(item(pr=pr(isDraft=True)))
+    assert action.kind == "ready"
+
+
+def test_a_pr_with_no_verdicts_goes_to_the_lead() -> None:
+    action = next_action(item(pr=pr(comments=[])))
+    assert action.agent == "lead"
+    assert action.blocked_on == "no Lead or Tester verdict on the PR"
+
+
+def test_a_missing_tester_verdict_alone_goes_to_the_tester() -> None:
+    only_lead = pr(comments=[{"body": LEAD_OK, "at": "2026-08-24T10:00:00Z"}])
+    assert next_action(item(pr=only_lead)).agent == "tester"
+
+
+def test_pending_ci_is_waited_on_rather_than_dispatched() -> None:
+    action = next_action(item(pr=pr(statusCheckRollup=[{"status": "IN_PROGRESS"}])))
+    assert action.kind == "wait"
+
+
+def test_everything_satisfied_reaches_gate_two() -> None:
+    action = next_action(item())
+    assert action.stage == "Ready to ship"
+    assert action.kind == "cpo"
+
+
+# --- CI conclusions ---------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("rollup", "expected"),
+    [
+        (GREEN, "green"),
+        ([{"conclusion": "FAILURE"}], "failing"),
+        ([{"conclusion": "SUCCESS"}, {"status": "QUEUED"}], "pending"),
+        ([], "none"),
+        (None, "none"),
+    ],
+)
+def test_ci_states(rollup: object, expected: str) -> None:
+    assert ci_state({"statusCheckRollup": rollup}) == expected
+
+
+def test_no_checks_reported_is_not_green() -> None:
+    """The merge gate's refusal, for the same reason: absence is not a pass."""
+    assert next_action(item(pr=pr(statusCheckRollup=[]))).kind == "wait"
+
+
+# --- stalls: all three happened in one day ----------------------------------
+
+
+def test_a_green_pr_still_in_draft_is_named_as_stalled() -> None:
+    assert stalls(item(pr=pr(isDraft=True))) == [
+        "CI green and still a draft — nobody marked it ready"
+    ]
+
+
+def test_a_green_open_pr_with_no_verdicts_is_named_as_stalled() -> None:
+    found = stalls(item(pr=pr(comments=[])))
+    assert found == ["CI green and open for review, but no Lead or Tester verdict"]
+
+
+def test_an_unanswered_changes_requested_verdict_is_named_as_stalled() -> None:
+    stale = pr(comments=[{"body": LEAD_NO, "at": "2026-08-24T10:00:00Z"}])
+    assert "no commit since" in stalls(item(pr=stale))[0]
+
+
+def test_a_healthy_pr_has_no_stalls() -> None:
+    assert stalls(item()) == []
+
+
+def test_an_item_with_no_pr_has_no_stalls() -> None:
+    assert stalls(item(pr={})) == []
+
+
+# --- dispatch ---------------------------------------------------------------
+
+
+def test_dispatching_an_agent_uses_the_one_invocation_path() -> None:
+    argv = dispatch(next_action(item(has_adr=False)), item(), "TokenFruit/area54")
+    assert argv[0] == "claude"
+    assert "--append-system-prompt" in argv
+    assert "claude-opus-5" in argv
+
+
+def test_marking_ready_names_the_pr_and_the_repo() -> None:
+    argv = dispatch(Action("In review", "draft", "ready"), item(), "TokenFruit/area54")
+    assert argv == ["gh", "pr", "ready", "42", "--repo", "TokenFruit/area54"]
+
+
+def test_a_cpo_gate_refuses_to_be_dispatched() -> None:
+    with pytest.raises(OrchestratorError, match="not dispatchable"):
+        dispatch(next_action(item()), item(), "TokenFruit/area54")
+
+
+def test_waiting_on_ci_refuses_to_be_dispatched() -> None:
+    with pytest.raises(OrchestratorError, match="not dispatchable"):
+        dispatch(Action("In review", "CI is pending", "wait"), item(), "TokenFruit/area54")
+
+
+def test_an_unknown_agent_refuses_rather_than_guessing() -> None:
+    action = Action("Building", "x", "agent", "builder-sideways", "do the thing")
+    with pytest.raises(OrchestratorError, match="no agent definition"):
+        dispatch(action, item(), "TokenFruit/area54")
+
+
+def test_nothing_in_the_table_can_ever_merge() -> None:
+    """The merge gate and the shell guard own that step. Nothing here goes near it."""
+    for state in (item(spec_status=None), item(has_adr=False), item(pr=pr(isDraft=True))):
+        argv = dispatch(next_action(state), state, "TokenFruit/area54")
+        assert "merge" not in argv
+
+
+# --- what is in flight ------------------------------------------------------
+
+
+def test_shipped_items_with_no_open_pr_drop_out() -> None:
+    shipped = item(spec_status="Shipped", pr={})
+    assert in_flight([shipped, item()]) == [item()]
+
+
+def test_a_shipped_spec_with_an_open_pr_stays_in_flight() -> None:
+    shipped = item(spec_status="Shipped")
+    assert in_flight([shipped]) == [shipped]
+
+
+def test_a_branch_left_behind_by_a_merge_is_not_work() -> None:
+    """A merged PR's branch carries a TF number and nothing else. Not in flight."""
+    stale = item(spec_status=None, pr={})
+    assert in_flight([stale]) == []
