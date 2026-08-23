@@ -90,6 +90,17 @@ def _number(tf: str) -> str:
     return str(int(match.group(1))) if match else tf
 
 
+def owning_item(pr: dict[str, object]) -> str | None:
+    """The item a PR belongs to, read from its branch name — `tf-021-*` — or None.
+
+    Only the branch. A TF number in a title or body is a mention — #28 rescopes
+    TF-021 and implements none of it — and reading one reported TF-021 as in
+    review on somebody else's PR. No body fallback is safe, so there is none.
+    """
+    match = BRANCH_TF.match(str(pr.get("headRefName", "")))
+    return _number(match.group(1)) if match else None
+
+
 def roadmap_done(root: Path = REPO_ROOT) -> set[str]:
     """Every TF number the roadmap's `Done` section ticks off. See `in_flight`."""
     path = root / "docs" / "roadmap.md"
@@ -126,15 +137,14 @@ def fetch(repo: str, root: Path = REPO_ROOT) -> list[Item]:
             branches.setdefault(_number(match.group(1)), line.strip())
 
     prs: dict[str, dict[str, object]] = {}
+    loose: list[dict[str, object]] = []
     fields = "number,url,title,body,isDraft,headRefName,statusCheckRollup,commits"
     for pr in json.loads(_gh(["pr", "list", "--repo", repo, "--state", "open", "--json", fields])):
-        found = BRANCH_TF.match(str(pr.get("headRefName", ""))) or TF.search(
-            f"{pr.get('title', '')} {pr.get('body', '')}"
-        )
-        if not found:
-            continue
         pr["comments"] = fetch_comments(int(pr["number"]), repo)
-        prs[_number(found.group(1))] = pr
+        if key := owning_item(pr):
+            prs[key] = pr
+        else:
+            loose.append(pr)
 
     done = roadmap_done(root)
     keys = sorted(set(specs) | set(branches) | set(prs), key=int)
@@ -149,6 +159,12 @@ def fetch(repo: str, root: Path = REPO_ROOT) -> list[Item]:
             pr=prs.get(key, {}),
         )
         for key in keys
+    ] + [
+        # A PR on no roadmap item is owed no spec — there is no line to groom —
+        # but it stays on the board, so a stall on it is named against no item
+        # instead of the wrong one.
+        Item(tf=str(pr.get("headRefName")), spec_waived=True, pr=pr)
+        for pr in loose
     ]
 
 
@@ -346,10 +362,11 @@ def dispatch(action: Action, item: Item, repo: str) -> list[str]:
 
 
 def print_status(items: list[Item]) -> None:
-    print(f"{'TF':8} {'Stage':16} {'Blocked on'}")
+    width = max((len(i.tf) for i in items), default=8)
+    print(f"{'TF':{width}} {'Stage':16} {'Blocked on'}")
     for item in items:
         action = next_action(item)
-        print(f"{item.tf:8} {action.stage:16} {action.blocked_on}")
+        print(f"{item.tf:{width}} {action.stage:16} {action.blocked_on}")
     stalled = [(i, s) for i in items for s in stalls(i)]
     if not stalled:
         return

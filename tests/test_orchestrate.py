@@ -21,6 +21,7 @@ from tools.orchestrate import (
     dispatch,
     in_flight,
     next_action,
+    owning_item,
     roadmap_done,
     stalls,
 )
@@ -249,6 +250,51 @@ def test_nothing_in_the_table_can_ever_merge() -> None:
     for state in (item(spec_status=None), item(has_adr=False), item(pr=pr(isDraft=True))):
         argv = dispatch(next_action(state), state, "TokenFruit/area54")
         assert "merge" not in argv
+
+
+# --- which PR belongs to which item -----------------------------------------
+
+
+def test_a_pr_belongs_to_the_item_its_branch_names() -> None:
+    assert owning_item({"headRefName": "tf-021-orchestrator", "body": ""}) == "21"
+
+
+def test_a_body_mentioning_an_item_does_not_own_it() -> None:
+    """#28 rescopes TF-021 on a chore branch and implements none of it."""
+    rescope: dict[str, object] = {
+        "headRefName": "chore/roadmap-orchestrator",
+        "title": "Put the orchestrator first",
+        "body": "Promotes TF-021 to Now and pauses TF-020.",
+    }
+    assert owning_item(rescope) is None
+
+
+def test_a_pr_on_no_item_is_reviewed_rather_than_groomed() -> None:
+    """It is owed no spec: there is no roadmap line for a Product Owner to groom."""
+    chore = item(
+        tf="chore/roadmap-orchestrator",
+        spec_status=None,
+        spec_waived=True,
+        has_adr=False,
+        branch=None,
+        pr=pr(comments=[]),
+    )
+    assert next_action(chore).stage == "In review"
+    assert next_action(chore).agent == "lead"
+
+
+def test_a_stall_on_a_pr_that_owns_no_item_is_still_named() -> None:
+    """The true positive. Attributed to no item, never dropped."""
+    chore = item(
+        tf="chore/roadmap-orchestrator",
+        spec_status=None,
+        spec_waived=True,
+        has_adr=False,
+        branch=None,
+        pr=pr(comments=[]),
+    )
+    assert in_flight([chore]) == [chore]
+    assert stalls(chore) == ["CI green and open for review, but no Lead or Tester verdict"]
 
 
 # --- what is in flight ------------------------------------------------------
