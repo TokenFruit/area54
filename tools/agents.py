@@ -134,11 +134,132 @@ def check_name_matches_filename(agent: Agent) -> list[str]:
 
 
 def validate(directory: Path = AGENTS_DIR) -> list[str]:
-    """Run every check over every agent. Returns all failures, worst first."""
+    """Run every check over every agent. Returns all failures."""
     agents = load_agents(directory)
     failures: list[str] = []
     for agent in agents:
         failures += check_required_fields(agent)
         failures += check_model_is_pinned(agent)
         failures += check_name_matches_filename(agent)
+        failures += check_tools_are_known(agent)
+        failures += check_role_tool_policy(agent)
+    return failures
+
+
+#: Every tool an agent or command may name. A typo like "Grepp" silently grants
+#: nothing, and the agent fails at runtime in a way no reader would predict, so
+#: unknown names are rejected here. Add real tools as they appear.
+KNOWN_TOOLS = frozenset(
+    {
+        "Agent",
+        "Artifact",
+        "Bash",
+        "BashOutput",
+        "Edit",
+        "Glob",
+        "Grep",
+        "KillShell",
+        "NotebookEdit",
+        "Read",
+        "SlashCommand",
+        "Task",
+        "TodoWrite",
+        "WebFetch",
+        "WebSearch",
+        "Write",
+    }
+)
+
+#: Tools that mutate files. The Lead must hold none of them.
+WRITE_TOOLS = frozenset({"Edit", "Write", "NotebookEdit"})
+
+
+@dataclass(frozen=True)
+class RolePolicy:
+    """The tool ceiling and floor for one role.
+
+    ``required`` is what the role cannot do its job without. ``forbidden`` is
+    what it must never hold — the separations the team's design depends on.
+    """
+
+    required: frozenset[str]
+    forbidden: frozenset[str]
+    reason: str
+
+
+#: Which tools each role may and must hold.
+#:
+#: These encode separations that were previously only asserted in prose, where
+#: nothing checked them and they could quietly stop being true.
+ROLE_POLICY: dict[str, RolePolicy] = {
+    "product-owner": RolePolicy(
+        required=frozenset({"Read", "Write"}),
+        forbidden=frozenset({"Bash", "Edit", "NotebookEdit"}),
+        reason="The PO defines what must be true, and never runs or edits code.",
+    ),
+    "architect": RolePolicy(
+        required=frozenset({"Read", "Write", "Grep"}),
+        forbidden=frozenset({"NotebookEdit"}),
+        reason="The Architect reads the codebase and writes ADRs, and must be able "
+        "to update CLAUDE.md's Stack and Commands tables.",
+    ),
+    "designer": RolePolicy(
+        required=frozenset({"Read", "Write"}),
+        forbidden=frozenset({"Bash", "Edit", "NotebookEdit"}),
+        reason="The Designer produces documents, not code, and has no reason to execute anything.",
+    ),
+    "builder-backend": RolePolicy(
+        required=frozenset({"Read", "Write", "Edit", "Bash"}),
+        forbidden=frozenset(),
+        reason="Builders implement, and must be able to run their own tests.",
+    ),
+    "builder-frontend": RolePolicy(
+        required=frozenset({"Read", "Write", "Edit", "Bash"}),
+        forbidden=frozenset(),
+        reason="Builders implement, and must be able to run their own tests.",
+    ),
+    "lead": RolePolicy(
+        required=frozenset({"Read", "Grep", "Bash"}),
+        forbidden=WRITE_TOOLS,
+        reason="A reviewer that can edit stops reporting findings and starts "
+        "silently patching them. The whole review gate rests on this.",
+    ),
+    "tester": RolePolicy(
+        required=frozenset({"Read", "Write", "Edit", "Bash"}),
+        forbidden=frozenset(),
+        reason="The Tester writes tests and runs the suite.",
+    ),
+    "devops": RolePolicy(
+        required=frozenset({"Read", "Bash"}),
+        forbidden=frozenset(),
+        reason="DevOps drives the pipeline through the shell.",
+    ),
+}
+
+
+def check_tools_are_known(agent: Agent) -> list[str]:
+    """Return failures for tool names that do not exist."""
+    unknown = sorted(set(agent.tools) - KNOWN_TOOLS)
+    if unknown:
+        return [
+            f"{agent.path.name}: unknown tool(s) {unknown}. A misspelt tool grants nothing "
+            f"and fails at runtime. Add to KNOWN_TOOLS if real, or fix the typo."
+        ]
+    return []
+
+
+def check_role_tool_policy(agent: Agent) -> list[str]:
+    """Return failures where *agent* holds too much, or too little, for its role."""
+    policy = ROLE_POLICY.get(agent.name)
+    if policy is None:
+        return [
+            f"{agent.path.name}: no tool policy for role '{agent.name}'. "
+            f"Add one to ROLE_POLICY so its tool grants are checked."
+        ]
+    held = set(agent.tools)
+    failures = []
+    if granted := sorted(held & policy.forbidden):
+        failures.append(f"{agent.path.name}: holds forbidden tool(s) {granted}. {policy.reason}")
+    if missing := sorted(policy.required - held):
+        failures.append(f"{agent.path.name}: missing required tool(s) {missing}. {policy.reason}")
     return failures
