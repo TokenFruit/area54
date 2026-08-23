@@ -7,9 +7,13 @@
 ## Context
 
 area54 is a **virtual software development team powered by agentic AI**, which
-Token Fruit deploys onto its other product repositories — Gempli (`area53`),
-alloqo, flozeno, izenesis, and whatever follows. The team is the product. Its
-users are Token Fruit's own product repos, and its operator is the CPO.
+Token Fruit deploys to work on its products. The team is the product. Its
+operator is the CPO, who decides which repositories it is deployed into.
+
+**area54 is independent of Gempli (`area53`) and is not deployed there.** The
+two share the `TokenFruit` org and a naming series, which makes them look
+related; they are not. Deployment targets are named by the CPO, never inferred
+from the org.
 
 This makes the conventional stack question mostly inapplicable. There is no
 server, no database, no browser, no user accounts, and nothing to host. What
@@ -25,8 +29,10 @@ So the real decisions are three, and none of them are "which web framework":
 
 The CPO confirmed the stack is genuinely open (Path 2), so this ADR chooses.
 
-Two existing stacks in the organisation were weighed as defaults:
-- `area53` (Gempli): Python — FastAPI, Celery, `mypy --strict`, 105 tests.
+Two existing stacks in the organisation were weighed as defaults. These are
+cited as **prior art for tooling only** — where Token Fruit has already proven a
+toolchain works — and imply nothing about where area54 gets deployed:
+- `area53`: Python — FastAPI, Celery, `mypy --strict`, 105 tests.
 - `area52`: TypeScript — Next.js 15, React 19, Prisma, Vitest.
 
 ## Decision
@@ -52,7 +58,8 @@ Supporting tools — frontmatter validators, the policy linter, the eval runner,
 the installer — are Python 3.12, managed with `uv`, checked with `ruff` and
 `mypy --strict`, tested with `pytest`.
 
-Rationale: this is `area53`'s house language and its proven discipline, the work
+Rationale: this is the house language of `area53`, where the discipline is
+already proven — prior art, not a deployment relationship — the work
 is text processing and subprocess orchestration where Python is strongest, and
 none of this tooling ever ships to an end user's machine — it runs in CI and in
 the maintainer's shell, so runtime distribution is not a constraint.
@@ -124,9 +131,10 @@ Nothing to migrate — greenfield.
 1. Convert the current `.claude/` tree into plugin layout with a manifest.
 2. Add the deterministic validators and wire them into CI, replacing the
    stack-detection placeholder in `ci.yml`.
-3. Install into **one** target repo first. `area53` (Gempli) is the right
-   choice: it is real, it is active, and it has a working test suite, so the
-   team's output can be judged against something that already has standards.
+3. Install into **one** target repo first, named by the CPO. Prefer a repo that
+   is real and active and already has a working test suite, so the team's output
+   is judged against standards that exist rather than standards it sets itself.
+   **Not `area53`** — area54 is independent of Gempli and is not deployed there.
 4. Only after a full feature ships through it end to end, roll to a second repo.
 
 Rollback at any point is uninstalling the plugin. Target repos are unmodified by

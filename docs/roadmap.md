@@ -22,8 +22,10 @@ acceptance criteria here, stop and run `/groom` instead.
 - [ ] TF-005 — Eval harness: fixture repos with planted defects. Does the Lead
       catch the bug? Does the PO write falsifiable criteria? Does the Tester
       refuse to weaken a failing test?
-- [ ] TF-006 — Deploy to the first target repo. Gempli (`area53`) — it is real,
-      active, and already has standards to be judged against
+- [ ] TF-006 — Deploy to the first target repo. **Blocked: the CPO names the
+      target.** Not `area53` — area54 is independent of Gempli. Prefer a repo
+      that is real, active, and already has a test suite, so the team's output
+      is judged against standards that exist
 
 ## Later
 

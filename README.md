@@ -1,8 +1,8 @@
 # Token Fruit — area54
 
 **A virtual software development team powered by agentic AI**, which Token Fruit
-deploys onto its product repositories — Gempli (`area53`), alloqo, flozeno,
-izenesis, and whatever follows.
+deploys to work on its products. Target repositories are named by the CPO.
+area54 is independent of Gempli (`area53`) and is not deployed there.
 
 The team is the product. area54 builds itself using itself: every change here
 goes through the same seven roles and two approval gates it ships to everyone
