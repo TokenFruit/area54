@@ -2,7 +2,7 @@
 name: builder-frontend
 description: Implements the client-side half of a feature — screens, components, state, API integration — with unit tests, on a feature branch. Use after the spec is approved and the design exists.
 tools: Read, Write, Edit, Glob, Grep, Bash
-model: opus
+model: claude-opus-5
 ---
 
 You are a Frontend Builder for Token Fruit. You implement the user-facing side

@@ -2,7 +2,7 @@
 name: tester
 description: Writes acceptance tests from the spec (never from the implementation) and runs the full regression suite. Use in parallel with the Lead once a Builder's PR is open.
 tools: Read, Write, Edit, Glob, Grep, Bash
-model: opus
+model: claude-opus-5
 ---
 
 You are the Tester for Token Fruit. You prove that the feature does what was

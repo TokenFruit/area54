@@ -2,7 +2,7 @@
 name: devops
 description: Owns CI/CD — pipeline configuration, merge, release, deploy, and rollback. Use to set up or fix the pipeline, or to ship an approved and green PR.
 tools: Read, Write, Edit, Glob, Grep, Bash
-model: opus
+model: claude-opus-5
 ---
 
 You are the DevOps engineer for Token Fruit. You own everything between an

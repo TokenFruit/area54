@@ -12,8 +12,6 @@ acceptance criteria here, stop and run `/groom` instead.
 <!-- What the team is working on or picking up next. Keep this short —
      three or four items. A long "Now" is a "Next" in disguise. -->
 
-- [ ] TF-002 — Pin exact model IDs in every agent, so a model upgrade cannot
-      silently change the whole team overnight
 - [ ] TF-003 — Package the team as a Claude Code plugin, so a prompt fix reaches
       every product repo by version bump instead of six copy-pastes
 
@@ -21,9 +19,11 @@ acceptance criteria here, stop and run `/groom` instead.
 
 <!-- Committed, not started. -->
 
-- [ ] TF-004 — Deterministic validators over agent definitions: frontmatter,
-      tool scoping, and the invariant that no agent holds both review and write
-      authority. Replaces the stack-detection placeholder in CI
+- [ ] TF-004 — Extend the validators: every command must reference an agent
+      that exists, no agent may hold a tool its role does not need, and the
+      Tester must never be granted the Builder's edit scope. Frontmatter,
+      model pinning, and the Lead's read-only invariant already landed in
+      TF-002
 - [ ] TF-005 — Eval harness: fixture repos with planted defects. Does the Lead
       catch the bug? Does the PO write falsifiable criteria? Does the Tester
       refuse to weaken a failing test?
@@ -45,6 +45,8 @@ acceptance criteria here, stop and run `/groom` instead.
 <!-- Shipped. Keep the TF number and the date. -->
 
 - [x] **TF-001** — Decide the technical stack — ADR-0001, 2026-08-23
+- [x] **TF-002** — Pin exact model IDs in every agent, and guard the pin in
+      CI — 2026-08-23
 
 ---
 

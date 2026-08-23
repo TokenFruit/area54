@@ -54,17 +54,37 @@ the CPO approves the ADR before it is accepted. See
 
 | Purpose | Command |
 | ---------- | ------------------- |
-| Install | `uv sync` |
-| Lint | `uv run ruff check .` |
-| Format | `uv run ruff format .` |
-| Typecheck | `uv run mypy --strict .` |
-| Unit tests | `uv run pytest -q` |
+| Install | `uv sync` (CI currently uses `pip install -e ".[dev]"`) |
+| Lint | `ruff check .` |
+| Format | `ruff format .` |
+| Typecheck | `mypy tools tests` |
+| Unit tests | `pytest` |
+| Agent definitions | `python tools/validate_agents.py` |
 | Behavioural evals | `claude plugin eval` |
 | Build | none — the repo is the plugin |
 
-The Python toolchain is not yet scaffolded; the first Builder to need it creates
-`pyproject.toml`. `claude plugin eval` availability on this account is unverified
-— DevOps confirms it before CI depends on it.
+`claude plugin eval` availability on this account is unverified — DevOps
+confirms it before CI depends on it.
+
+## Model pinning
+
+**Every agent pins an exact model identifier. Never an alias.**
+
+`opus`, `sonnet`, `haiku`, and `inherit` resolve to whatever is newest in their
+family. An agent on an alias changes behaviour the day a new model ships — with
+no commit to review, nothing to bisect, and nothing to revert. Eight agents on
+aliases means the whole team can shift underneath you overnight, and your evals
+would re-baseline against the drift instead of catching it.
+
+So: `model: claude-opus-5`, not `model: opus`. Enforced by
+`tools/validate_agents.py`, which runs in CI and fails the build on any alias.
+
+Changing a pin is a **minor** version bump, never a patch, and requires a full
+eval run before merge. Adding a newly released model means adding it to
+`PINNED_MODELS` in `tools/agents.py` in the same PR that first uses it.
+
+All eight agents currently run `claude-opus-5`. Whether every role needs the
+strongest model is a live cost question and a CPO decision, not a drive-by edit.
 
 ## Definition of Done
 
