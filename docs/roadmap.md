@@ -19,6 +19,12 @@ acceptance criteria here, stop and run `/groom` instead.
 
 <!-- Committed, not started. -->
 
+- [ ] TF-009 — Run a real feature through the team end to end in area52. The
+      install is done; nothing has been *built* by the team yet on real code
+- [ ] TF-010 — Close area52's two Definition-of-Done gaps: ESLint is
+      unconfigured (`next lint` is deprecated and prompts interactively), and
+      `npm run build` needs DATABASE_URL and the NextAuth secrets
+
 - [ ] TF-007 — Get one eval trial to complete. The CLI is installed and the
       invocation is verified end to end, but its OAuth session is expired so
       every trial errors before reaching the model. **Blocked on `claude
@@ -27,10 +33,6 @@ acceptance criteria here, stop and run `/groom` instead.
 - [ ] TF-008 — Migrate to `claude plugin eval` when early access arrives. It
       has an ablation arm that measures whether the team actually helps versus
       no plugin at all — something this harness cannot do
-- [ ] TF-006 — Deploy to the first target repo. **Blocked: the CPO names the
-      target.** Not `area53` — area54 is independent of Gempli. Prefer a repo
-      that is real, active, and already has a test suite, so the team's output
-      is judged against standards that exist
 
 ## Later
 
@@ -51,6 +53,8 @@ acceptance criteria here, stop and run `/groom` instead.
       CI — 2026-08-23
 - [x] **TF-004** — Tool scoping per role, and every command delegation resolved
       against a real agent — 2026-08-23
+- [x] **TF-006** — Deploy to the first target repo. area52 (Promptico), named
+      by the CPO — installer, portable constitution, and CI — 2026-08-23
 - [x] **TF-005** — Eval harness: fixtures with planted defects, scoring over
       repeated trials, four cases. Not yet run live — 2026-08-23
 
