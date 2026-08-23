@@ -12,8 +12,8 @@ import filecmp
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
@@ -33,6 +33,13 @@ class TrialRun:
     output: str
     changed_files: frozenset[str]
     exit_code: int = 0
+    #: Text files left in the workdir, keyed by fixture-relative path.
+    #:
+    #: Captured before the temp dir is destroyed. Without this, an agent whose
+    #: job is to *write* a file — the Product Owner writing a spec — produces
+    #: nothing an assertion can see, because its own role definition tells it
+    #: to keep its final message a summary rather than a copy of the file.
+    files: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def errored(self) -> bool:
@@ -45,6 +52,24 @@ class Runner(Protocol):
     def run(self, case: EvalCase, workdir: Path) -> TrialRun:
         """Return the agent's output, the files it changed, and its exit code."""
         ...
+
+
+#: Files larger than this are not captured. Fixtures are small by design; a
+#: large file in the workdir is build output, not something to assert on.
+MAX_CAPTURE_BYTES = 256 * 1024
+
+
+def capture_text_files(root: Path) -> dict[str, str]:
+    """Return the readable text files under *root*, keyed by relative path."""
+    captured: dict[str, str] = {}
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.stat().st_size > MAX_CAPTURE_BYTES:
+            continue
+        try:
+            captured[str(path.relative_to(root))] = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+    return captured
 
 
 def changed_files(original: Path, working: Path) -> frozenset[str]:
@@ -158,4 +183,9 @@ def run_trial(case: EvalCase, runner: Runner) -> TrialRun:
         shutil.copytree(case.fixture_dir, workdir)
         run = runner.run(case, workdir)
         touched = run.changed_files | changed_files(case.fixture_dir, workdir)
-        return TrialRun(output=run.output, changed_files=touched, exit_code=run.exit_code)
+        return TrialRun(
+            output=run.output,
+            changed_files=touched,
+            exit_code=run.exit_code,
+            files=capture_text_files(workdir),
+        )

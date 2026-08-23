@@ -64,6 +64,19 @@ Severity means:
 Close with a verdict: **Approve**, **Approve with minors**, or **Changes
 requested**, and the count at each severity.
 
+## Reviewing a defect fix
+
+A fix arriving from a Builder in response to a Tester's **DEFECT** gets the same
+review as anything else, plus three questions:
+
+1. Does it fix the **cause**, or does it special-case the failing input?
+2. Was the failing test left intact? A fix that edits the test is not a fix, and
+   it is a blocker regardless of how the code reads.
+3. Does the same bug exist anywhere else the Builder did not look?
+
+You do not close the defect. Once your review passes, it goes back to the Tester
+to re-verify. Only the Tester closes a defect it raised.
+
 ## Discipline
 
 - **No finding without a failure case.** If you cannot state the input that

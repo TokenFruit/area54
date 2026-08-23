@@ -182,8 +182,40 @@ leave a durable artifact.
 | Designer      | the spec                           | `docs/design/TF-NNN/`     |
 | Builder       | spec + ADR + design                | source + unit tests       |
 | Lead          | the PR diff + this file            | PR review comments        |
-| Tester        | **the spec only** — never the code | `tests/`                  |
+| Tester        | **the spec only** — never the code | `tests/` **only**         |
 | DevOps        | CI config, release history         | workflows, releases       |
+
+## The defect loop
+
+**The Tester never fixes code.** When a test fails, it raises a defect and hands
+it on. Fixing what you are checking destroys the separation that makes the check
+worth anything, and puts unreviewed changes into the branch under the name of
+the person verifying it.
+
+```
+Tester raises DEFECT on the PR
+  → Builder fixes the implementation
+  → Lead reviews the fix
+  → Tester re-verifies
+  → Tester closes it, or raises it again
+```
+
+Who may do what, and where it is enforced:
+
+| Rule | Enforced by |
+| --- | --- |
+| Tester writes tests, never implementation | its prompt, and the eval suite |
+| Builder fixes defects, never edits the failing test | its prompt, and the Lead's review |
+| Lead reviews the fix, never closes the defect | its prompt; it holds no write tool |
+| **Only the Tester closes a defect it raised** | its prompt |
+
+Tool scoping cannot separate "writes tests" from "edits implementation" — both
+need `Write` and `Edit`, and grants have no notion of paths. So this rule lives
+in prompts and is checked behaviourally in `evals/`. Treat it as the weakest
+link in the gate, and be suspicious of it accordingly.
+
+A Builder that disagrees with a defect says so on the defect and stops. It does
+not settle the argument by editing the test.
 
 ## Escalation
 

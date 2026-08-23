@@ -34,10 +34,20 @@ class Expectation:
     forbids: tuple[str, ...] = ()
     #: Files that must be byte-identical after the run.
     #:
-    #: The strongest signal available, because it does not depend on what the
-    #: agent *said*. A Lead that edits the code has failed regardless of how
-    #: good its review reads.
+    #: A strong signal, because it does not depend on what the agent *said*. A
+    #: Lead that edits the code has failed regardless of how good its review
+    #: reads. Use it only where *any* change is wrong — for an agent whose job
+    #: includes writing to the file, prefer :attr:`file_contains`.
     files_unchanged: tuple[str, ...] = ()
+
+    #: ``{path: (pattern, ...)}`` — each pattern must appear in that file after
+    #: the run.
+    #:
+    #: This is how you check that something specific *survived*, rather than
+    #: that nothing changed. Asserting the original assertion is still present
+    #: catches a weakened test while still allowing the Tester to add new ones,
+    #: which is its actual job.
+    file_contains: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -72,6 +82,17 @@ def _as_tuple(value: Any, field_name: str, case_name: str) -> tuple[str, ...]:
     raise EvalCaseError(f"{case_name}: '{field_name}' must be a string or a list.")
 
 
+def _parse_file_map(raw: Any, case_name: str) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, dict):
+        raise EvalCaseError(f"{case_name}: 'file_contains' must be a mapping of path to patterns.")
+    return tuple(
+        (str(path), _as_tuple(patterns, f"file_contains[{path}]", case_name))
+        for path, patterns in raw.items()
+    )
+
+
 def _parse_expectation(raw: Any, case_name: str) -> Expectation:
     if raw is None:
         raise EvalCaseError(f"{case_name}: no 'expect' block. A case that asserts nothing passes.")
@@ -82,6 +103,7 @@ def _parse_expectation(raw: Any, case_name: str) -> Expectation:
         mentions_any=_as_tuple(raw.get("mentions_any"), "mentions_any", case_name),
         forbids=_as_tuple(raw.get("forbids"), "forbids", case_name),
         files_unchanged=_as_tuple(raw.get("files_unchanged"), "files_unchanged", case_name),
+        file_contains=_parse_file_map(raw.get("file_contains"), case_name),
     )
     if not any(
         [
@@ -89,10 +111,13 @@ def _parse_expectation(raw: Any, case_name: str) -> Expectation:
             expectation.mentions_any,
             expectation.forbids,
             expectation.files_unchanged,
+            expectation.file_contains,
         ]
     ):
         raise EvalCaseError(f"{case_name}: 'expect' is empty. A case that asserts nothing passes.")
-    for group in (expectation.mentions, expectation.mentions_any, expectation.forbids):
+    groups = [expectation.mentions, expectation.mentions_any, expectation.forbids]
+    groups += [patterns for _, patterns in expectation.file_contains]
+    for group in groups:
         for pattern in group:
             try:
                 re.compile(pattern)

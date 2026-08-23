@@ -24,6 +24,16 @@ Report to the CPO a single consolidated verdict:
 - **Ready to ship: yes / no.** Yes requires all three: no unresolved blocker or
   major, Tester pass with full coverage, and green CI.
 
-If there are blockers or majors, hand them back to the relevant builder to fix,
-then re-run this command. Do not fix them yourself — the fix must go through the
-builder so the review loop stays honest.
+If there are blockers, majors, or Tester defects, run the defect loop:
+
+```
+Builder fixes  →  Lead reviews the fix  →  Tester re-verifies  →  Tester closes
+```
+
+Hand each one to the **builder-backend** subagent or the **builder-frontend**
+subagent, whichever owns the code. When the fix lands, re-run this command so
+the Lead reviews it and the Tester re-verifies.
+
+Do not fix anything yourself, and do not let the Tester fix it either. The fix
+goes through a Builder or the loop is pointless — the value of a verdict comes
+entirely from the person giving it not being the person who wrote the code.
