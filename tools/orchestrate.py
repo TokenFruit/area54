@@ -189,7 +189,10 @@ def fetch(repo: str, root: Path = REPO_ROOT) -> list[Item]:
 
     prs: dict[str, dict[str, object]] = {}
     loose: list[dict[str, object]] = []
-    fields = "number,url,title,body,isDraft,headRefName,headRefOid,statusCheckRollup,commits"
+    fields = (
+        "number,url,title,body,isDraft,autoMergeRequest,"
+        "headRefName,headRefOid,statusCheckRollup,commits"
+    )
     listed_prs = _gh(["pr", "list", "--repo", repo, "--state", "open", "--json", fields])
     for pr in sorted(json.loads(listed_prs), key=lambda p: int(p["number"]), reverse=True):
         pr["comments"] = fetch_comments(int(pr["number"]), repo)
@@ -511,6 +514,16 @@ def dispatch(action: Action, item: Item, repo: str) -> list[str]:
     other `gh` call does not get to run unread.
     """
     if action.kind == "ready":
+        # `gh pr ready` is not inert on a PR with auto-merge enabled: GitHub
+        # merges it the moment it is non-draft and its checks pass, and no
+        # command is issued, so neither the gate nor the shell guard is
+        # consulted. This clause only fires when CI is already green, so that
+        # is the same second. Enabling auto-merge is the CPO's to undo.
+        if item.pr.get("autoMergeRequest"):
+            raise OrchestratorError(
+                f"refusing: auto-merge is enabled on #{item.pr.get('number')}, so marking it "
+                "ready would merge it without the gate. Turn auto-merge off, or run /ship."
+            )
         argv = ["gh", "pr", "ready", str(item.pr.get("number")), "--repo", repo]
     elif action.kind == "agent" and action.agent and action.prompt:
         agent = next((a for a in load_agents() if a.name == action.agent), None)

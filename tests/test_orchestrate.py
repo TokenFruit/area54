@@ -381,6 +381,25 @@ def test_marking_ready_names_the_pr_and_the_repo() -> None:
     assert argv == ["gh", "pr", "ready", "42", "--repo", "TokenFruit/area54"]
 
 
+def test_marking_ready_refuses_when_auto_merge_would_merge_it() -> None:
+    """`gh pr ready` is not inert: GitHub merges a green PR with auto-merge set.
+
+    No command is issued for that merge, so neither the gate nor the shell guard
+    sees it, and this clause fires only when CI is already green.
+    """
+    armed = item(pr=pr(isDraft=True, autoMergeRequest={"enabledAt": "2026-08-24T09:00:00Z"}))
+    action = next_action(armed)
+    assert action.kind == "ready"
+    with pytest.raises(OrchestratorError, match="auto-merge is enabled"):
+        dispatch(action, armed, "TokenFruit/area54")
+
+
+def test_marking_ready_goes_ahead_when_auto_merge_is_not_set() -> None:
+    draft = item(pr=pr(isDraft=True, autoMergeRequest=None))
+    argv = dispatch(next_action(draft), draft, "TokenFruit/area54")
+    assert argv == ["gh", "pr", "ready", "42", "--repo", "TokenFruit/area54"]
+
+
 def test_a_cpo_gate_refuses_to_be_dispatched() -> None:
     with pytest.raises(OrchestratorError, match="not dispatchable"):
         dispatch(next_action(item()), item(), "TokenFruit/area54")
