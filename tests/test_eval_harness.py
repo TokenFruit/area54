@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 from tools.evals.case import (
     EvalCase,
@@ -71,8 +72,6 @@ def test_every_case_targets_a_real_agent(cases: list[EvalCase]) -> None:
 
 def test_every_expect_block_uses_only_the_five_primitives(cases: list[EvalCase]) -> None:
     """A key the parser does not know is silently ignored, so the case asserts less."""
-    import yaml
-
     for case in cases:
         assert case.path is not None
         raw = yaml.safe_load(case.path.read_text(encoding="utf-8"))
