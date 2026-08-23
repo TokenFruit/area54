@@ -159,7 +159,13 @@ def test_settings_are_installed(tmp_path: Path) -> None:
     import json
 
     loaded = json.loads(settings.read_text(encoding="utf-8"))
-    assert "Bash(gh pr merge:*)" in loaded["permissions"]["deny"]
+    assert "Bash(git push --force:*)" in loaded["permissions"]["deny"]
+
+    # Merging is not denied by a permission rule any more — the merge gate
+    # decides and the guard enforces it. So what a target repo must receive is
+    # the guard itself; settings permitting `gh pr merge` without it would be
+    # an ungated merge.
+    assert (target / ".claude" / "hooks" / "guard_bash.py").is_file()
 
 
 def test_a_preexisting_target_file_is_not_clobbered(tmp_path: Path) -> None:

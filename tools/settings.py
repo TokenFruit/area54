@@ -58,10 +58,12 @@ MUST_BE_ALLOWED = (
 )
 
 #: Deny rules that must survive any edit to this file.
-REQUIRED_DENY = (
-    "Bash(gh pr merge:*)",
-    "Bash(git push --force:*)",
-)
+#: Merging is deliberately absent. It is no longer denied outright, because
+#: tools/merge_gate.py decides and the guard hook enforces that decision — a
+#: blanket deny would short-circuit the gate and no merge could ever happen,
+#: authorised or not. What must hold instead is that the guard is configured,
+#: which :func:`check_a_guard_backs_the_push_rules` enforces.
+REQUIRED_DENY = ("Bash(git push --force:*)",)
 
 
 def _project_relative(token: str) -> str:
@@ -136,7 +138,9 @@ def check_a_guard_backs_the_push_rules(settings: Settings) -> list[str]:
     list grants `git push` at all, something that reads the whole command has
     to be watching it.
     """
-    grants_push = any(rule.startswith("Bash(git push") for rule in settings.allow)
+    grants_push = any(
+        rule.startswith(("Bash(git push", "Bash(gh pr merge")) for rule in settings.allow
+    )
     if not grants_push:
         return []
     if not any("guard_bash" in command for command in settings.hook_commands):

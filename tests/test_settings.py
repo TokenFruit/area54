@@ -68,12 +68,10 @@ def test_the_settings_file_is_valid_json() -> None:
 
 
 def test_dropping_a_required_deny_is_caught(tmp_path: Path) -> None:
-    s = settings_from(
-        {"permissions": {"allow": [], "deny": ["Bash(git push --force:*)"]}}, tmp_path
-    )
+    s = settings_from({"permissions": {"allow": [], "deny": []}}, tmp_path)
     failures = check_required_denies_survive(s)
     assert len(failures) == 1
-    assert "gh pr merge" in failures[0]
+    assert "git push --force" in failures[0]
 
 
 def test_granting_push_with_no_guard_is_caught(tmp_path: Path) -> None:
