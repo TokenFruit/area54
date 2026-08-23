@@ -21,7 +21,9 @@ import re
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 #: How long an authorisation stays valid. Long enough to merge, short enough
@@ -70,21 +72,93 @@ def _gh(args: list[str]) -> str:
 
 def fetch(pr: int, repo: str) -> dict[str, object]:
     """Return everything the rules need, in one request set."""
-    fields = "number,headRefOid,isDraft,mergeable,body,statusCheckRollup"
+    fields = "number,headRefOid,isDraft,mergeable,body,statusCheckRollup,commits"
     data: dict[str, object] = json.loads(
         _gh(["pr", "view", str(pr), "--repo", repo, "--json", fields])
     )
     comments = json.loads(_gh(["api", f"repos/{repo}/issues/{pr}/comments"]))
     reviews = json.loads(_gh(["api", f"repos/{repo}/pulls/{pr}/reviews"]))
-    data["all_comments"] = [str(c.get("body", "")) for c in comments] + [
-        str(r.get("body", "")) for r in reviews
+    data["all_comments"] = [
+        {"body": str(c.get("body", "")), "posted": str(c.get("created_at", ""))} for c in comments
+    ] + [
+        {"body": str(r.get("body", "")), "posted": str(r.get("submitted_at", ""))} for r in reviews
     ]
+    data["head_committed_at"] = _head_committed_at(data)
     return data
 
 
-def _bodies(data: dict[str, object]) -> list[str]:
+def _head_committed_at(data: dict[str, object]) -> str:
+    """Return the head commit's `committedDate`, matched by SHA rather than position."""
+    head = str(data.get("headRefOid", ""))
+    commits = data.get("commits")
+    if not isinstance(commits, list) or not commits:
+        raise GateError("the PR reports no commits; the head commit cannot be dated.")
+    for commit in reversed(commits):
+        if isinstance(commit, dict) and str(commit.get("oid", "")) == head:
+            return str(commit.get("committedDate", ""))
+    raise GateError(f"no commit on the PR matches head {head[:8]}; the head cannot be dated.")
+
+
+def _comments(data: dict[str, object]) -> list[dict[str, object]]:
     raw = data.get("all_comments", [])
-    return [b for b in raw if isinstance(b, str)] if isinstance(raw, list) else []
+    if not isinstance(raw, list):
+        raise GateError("the PR comments could not be read; they are not a list.")
+    for entry in raw:
+        if not isinstance(entry, dict):
+            raise GateError(f"a PR comment could not be read; it is a {type(entry).__name__}.")
+    return [entry for entry in raw if isinstance(entry, dict)]
+
+
+def _moment(raw: object, what: str) -> datetime:
+    """Parse a GitHub timestamp, refusing anything it cannot compare."""
+    if not isinstance(raw, str) or not raw:
+        raise GateError(f"{what} carries no timestamp; a verdict cannot be dated without one.")
+    try:
+        moment = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise GateError(f"{what} has an unreadable timestamp {raw!r}.") from exc
+    if moment.tzinfo is None:
+        raise GateError(f"{what} has a timestamp without a zone, {raw!r}; it cannot be compared.")
+    return moment
+
+
+def _verdicts(
+    data: dict[str, object], is_verdict: Callable[[str], bool]
+) -> tuple[list[str], list[str]]:
+    """Split matching verdicts into those covering the head commit, and those predating it.
+
+    A verdict describes the code that existed when it was written, so it counts
+    only if it was posted strictly after the head commit was made. This catches
+    the sequence the gate used to wave through: approve, push more commits, wait
+    for CI to go green, merge code nobody read.
+
+    It does not catch every history rewrite. `committedDate` moves on a rebase
+    or an amend, so those are caught; a rewrite that preserves the committer
+    date (`--committer-date-is-author-date`, or a force-push of older commits)
+    keeps a stale verdict looking current. This rule is about the ordinary
+    sequence, not about defeating a determined rewrite.
+    """
+    head = _moment(data.get("head_committed_at"), "the head commit")
+    covering: list[str] = []
+    stale: list[str] = []
+    for entry in _comments(data):
+        body = str(entry.get("body", ""))
+        if not is_verdict(body):
+            continue
+        # Strictly after, so an equal timestamp counts as stale. GitHub stamps
+        # to the second, so a verdict sharing the commit's second may have been
+        # written just before it — and ambiguous is never a pass here.
+        posted = _moment(entry.get("posted"), "a verdict on the PR")
+        (covering if posted > head else stale).append(body)
+    return covering, stale
+
+
+def _is_lead_verdict(body: str) -> bool:
+    return bool(LEAD_APPROVE.search(body) or LEAD_REJECT.search(body))
+
+
+def _is_tester_verdict(body: str) -> bool:
+    return TESTER_VERDICT.search(body) is not None
 
 
 def check_not_draft(data: dict[str, object]) -> Result:
@@ -121,11 +195,15 @@ def check_spec_linked(data: dict[str, object]) -> Result:
 
 
 def check_lead_verdict(data: dict[str, object]) -> Result:
-    """A Lead verdict must exist, approve, and carry no blockers or majors."""
-    verdicts = [b for b in _bodies(data) if LEAD_APPROVE.search(b) or LEAD_REJECT.search(b)]
-    if not verdicts:
+    """A Lead verdict must exist, cover the head, approve, and carry no blockers or majors."""
+    covering, stale = _verdicts(data, _is_lead_verdict)
+    if not covering:
+        if stale:
+            return Result(
+                "lead verdict", False, "the Lead verdict predates the head commit — re-review it"
+            )
         return Result("lead verdict", False, "no Lead verdict posted to the PR")
-    latest = verdicts[-1]
+    latest = covering[-1]
     if LEAD_REJECT.search(latest) and not LEAD_APPROVE.search(latest):
         return Result("lead verdict", False, "latest Lead verdict requests changes")
     for match in LEAD_COUNTS.finditer(latest):
@@ -136,15 +214,20 @@ def check_lead_verdict(data: dict[str, object]) -> Result:
 
 
 def check_tester_verdict(data: dict[str, object]) -> Result:
-    """A Tester verdict must exist on the PR and say Pass.
+    """A Tester verdict must exist on the PR, cover the head commit, and say Pass.
 
     A verdict that lives only in a transcript does not exist as far as this
     gate is concerned. That is the point: the PR is the durable record.
     """
-    found = [m for b in _bodies(data) if (m := TESTER_VERDICT.search(b))]
-    if not found:
+    covering, stale = _verdicts(data, _is_tester_verdict)
+    if not covering:
+        if stale:
+            return Result(
+                "tester verdict", False, "the Tester verdict predates the head commit — re-test it"
+            )
         return Result("tester verdict", False, "no Tester verdict posted to the PR")
-    latest = found[-1].group(1).lower()
+    match = TESTER_VERDICT.search(covering[-1])
+    latest = match.group(1).lower() if match else "unreadable"
     return Result("tester verdict", latest == "pass", f"Tester verdict: {latest}")
 
 

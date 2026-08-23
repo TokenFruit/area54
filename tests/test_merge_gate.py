@@ -18,6 +18,7 @@ import pytest
 from tools.merge_gate import (
     TOKEN_TTL_SECONDS,
     GateError,
+    _head_committed_at,
     check_ci_green,
     check_lead_verdict,
     check_mergeable,
@@ -37,6 +38,17 @@ guard = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(guard)
 
 
+#: The head commit, and the two sides of it a verdict can fall on.
+COMMITTED = "2026-08-24T12:00:00Z"
+AFTER = "2026-08-24T12:05:00Z"
+BEFORE = "2026-08-24T11:55:00Z"
+
+
+def said(body: str, posted: str = AFTER) -> dict[str, object]:
+    """One comment or review, as fetch() hands it to the rules."""
+    return {"body": body, "posted": posted}
+
+
 def pr(**overrides: object) -> dict[str, object]:
     """A PR that passes every rule, so each test can break exactly one."""
     data: dict[str, object] = {
@@ -44,13 +56,14 @@ def pr(**overrides: object) -> dict[str, object]:
         "isDraft": False,
         "mergeable": "MERGEABLE",
         "body": "Implements docs/specs/TF-002-robots-and-sitemap.md",
+        "head_committed_at": COMMITTED,
         "statusCheckRollup": [
             {"name": "Governance", "conclusion": "SUCCESS"},
             {"name": "Typecheck / Lint / Test", "conclusion": "SUCCESS"},
         ],
         "all_comments": [
-            "## Lead review\n\n**Verdict: Approve.** 0 blockers, 0 majors, 1 minor.",
-            "## Tester report\n\n**Tester verdict: Pass** — 13/13 criteria covered.",
+            said("## Lead review\n\n**Verdict: Approve.** 0 blockers, 0 majors, 1 minor."),
+            said("## Tester report\n\n**Tester verdict: Pass** — 13/13 criteria covered."),
         ],
     }
     data.update(overrides)
@@ -107,33 +120,33 @@ def test_an_explicit_waiver_is_accepted() -> None:
 
 
 def test_a_missing_lead_verdict_is_refused() -> None:
-    result = check_lead_verdict(pr(all_comments=["Tester verdict: Pass"]))
+    result = check_lead_verdict(pr(all_comments=[said("Tester verdict: Pass")]))
     assert not result.passed
     assert "no Lead verdict" in result.detail
 
 
 def test_a_lead_requesting_changes_is_refused() -> None:
     assert not check_lead_verdict(
-        pr(all_comments=["## Lead\n\n**Verdict: Changes requested** — 1 blocker."])
+        pr(all_comments=[said("## Lead\n\n**Verdict: Changes requested** — 1 blocker.")])
     ).passed
 
 
 def test_a_lead_approval_carrying_a_blocker_is_refused() -> None:
     """An approval that also reports a blocker is a contradiction, not a pass."""
     assert not check_lead_verdict(
-        pr(all_comments=["**Verdict: Approve** — 1 blocker, 0 majors."])
+        pr(all_comments=[said("**Verdict: Approve** — 1 blocker, 0 majors.")])
     ).passed
 
 
 def test_a_lead_approval_carrying_a_major_is_refused() -> None:
     assert not check_lead_verdict(
-        pr(all_comments=["**Verdict: Approve with minors** — 0 blockers, 2 majors."])
+        pr(all_comments=[said("**Verdict: Approve with minors** — 0 blockers, 2 majors.")])
     ).passed
 
 
 def test_minors_and_nits_do_not_block() -> None:
     assert check_lead_verdict(
-        pr(all_comments=["**Verdict: Approve with minors** — 0 blockers, 0 majors, 3 minors."])
+        pr(all_comments=[said("**Verdict: Approve with minors** — 0 blockers, 0 majors, 3 minors")])
     ).passed
 
 
@@ -144,14 +157,16 @@ def test_a_missing_tester_verdict_is_refused() -> None:
     the PR, so a merged change carried a code review and no evidence anyone
     had verified it against its spec.
     """
-    result = check_tester_verdict(pr(all_comments=["**Verdict: Approve.** 0 blockers, 0 majors."]))
+    result = check_tester_verdict(
+        pr(all_comments=[said("**Verdict: Approve.** 0 blockers, 0 majors.")])
+    )
     assert not result.passed
     assert "no Tester verdict posted to the PR" in result.detail
 
 
 def test_a_failing_tester_verdict_is_refused() -> None:
     assert not check_tester_verdict(
-        pr(all_comments=["## Tester\n\n**Tester verdict: Fail** — 2 defects open."])
+        pr(all_comments=[said("## Tester\n\n**Tester verdict: Fail** — 2 defects open.")])
     ).passed
 
 
@@ -160,11 +175,155 @@ def test_the_latest_verdict_wins() -> None:
     assert not check_tester_verdict(
         pr(
             all_comments=[
-                "Tester verdict: Pass",
-                "Re-run after the fix. Tester verdict: Fail — regression found.",
+                said("Tester verdict: Pass"),
+                said("Re-run after the fix. Tester verdict: Fail — regression found."),
             ]
         )
     ).passed
+
+
+# --- a verdict must postdate the code it is about -------------------------
+#
+# The gate used to accept approve, push more commits, wait for CI to go green,
+# merge. The verdicts described a commit that was no longer the head, so the
+# merge was authorised for code nobody had read.
+
+
+def test_a_lead_verdict_posted_after_the_head_commit_still_passes() -> None:
+    """The existing behaviour, pinned: nothing about a current verdict changes."""
+    assert check_lead_verdict(
+        pr(all_comments=[said("**Verdict: Approve.** 0 blockers, 0 majors.", posted=AFTER)])
+    ).passed
+
+
+def test_a_lead_verdict_predating_the_head_commit_is_refused() -> None:
+    result = check_lead_verdict(
+        pr(all_comments=[said("**Verdict: Approve.** 0 blockers, 0 majors.", posted=BEFORE)])
+    )
+    assert not result.passed
+    assert "predates the head commit" in result.detail
+
+
+def test_a_tester_verdict_posted_after_the_head_commit_still_passes() -> None:
+    assert check_tester_verdict(
+        pr(all_comments=[said("**Tester verdict: Pass** — 13/13 covered.", posted=AFTER)])
+    ).passed
+
+
+def test_a_tester_verdict_predating_the_head_commit_is_refused() -> None:
+    result = check_tester_verdict(
+        pr(all_comments=[said("**Tester verdict: Pass** — 13/13 covered.", posted=BEFORE)])
+    )
+    assert not result.passed
+    assert "predates the head commit" in result.detail
+
+
+def test_a_stale_verdict_does_not_read_like_a_missing_one() -> None:
+    """Two different problems. 'Nobody reviewed it' and 'someone reviewed
+    something else' need different fixes, so they need different messages."""
+    approval = "**Verdict: Approve.** 0 blockers, 0 majors."
+    stale = check_lead_verdict(pr(all_comments=[said(approval, posted=BEFORE)]))
+    missing = check_lead_verdict(pr(all_comments=[]))
+    assert stale.detail != missing.detail
+
+    verdict = "**Tester verdict: Pass**"
+    stale_tester = check_tester_verdict(pr(all_comments=[said(verdict, posted=BEFORE)]))
+    missing_tester = check_tester_verdict(pr(all_comments=[]))
+    assert stale_tester.detail != missing_tester.detail
+
+
+def test_a_verdict_posted_in_the_same_second_as_the_commit_is_refused() -> None:
+    """GitHub stamps to the second, so equal timestamps cannot be ordered.
+
+    Ambiguous is not a pass: the boundary is strictly after.
+    """
+    assert not check_lead_verdict(
+        pr(all_comments=[said("**Verdict: Approve.** 0 blockers, 0 majors.", posted=COMMITTED)])
+    ).passed
+
+
+def test_a_verdict_one_second_after_the_commit_is_accepted() -> None:
+    """The other side of the same boundary."""
+    assert check_lead_verdict(
+        pr(
+            all_comments=[
+                said("**Verdict: Approve.** 0 blockers, 0 majors.", posted="2026-08-24T12:00:01Z")
+            ]
+        )
+    ).passed
+
+
+def test_a_later_verdict_rescues_an_earlier_stale_one() -> None:
+    """Re-reviewing after the push is exactly what the refusal asks for."""
+    approval = "**Verdict: Approve.** 0 blockers, 0 majors."
+    assert check_lead_verdict(
+        pr(all_comments=[said(approval, posted=BEFORE), said(approval, posted=AFTER)])
+    ).passed
+
+
+# --- a verdict that cannot be dated is refused, not guessed ---------------
+
+
+def test_a_verdict_with_no_timestamp_is_refused() -> None:
+    with pytest.raises(GateError):
+        check_lead_verdict(pr(all_comments=[said("**Verdict: Approve.**", posted="")]))
+
+
+def test_a_verdict_with_an_unreadable_timestamp_is_refused() -> None:
+    with pytest.raises(GateError):
+        check_tester_verdict(pr(all_comments=[said("**Tester verdict: Pass**", posted="Tuesday")]))
+
+
+def test_a_verdict_with_no_time_zone_is_refused() -> None:
+    """Two clocks, no offset between them, so no ordering worth trusting."""
+    with pytest.raises(GateError):
+        check_lead_verdict(pr(all_comments=[said("**Verdict: Approve.**", posted="2026-08-24")]))
+
+
+def test_an_undatable_head_commit_is_refused() -> None:
+    with pytest.raises(GateError):
+        check_lead_verdict(pr(head_committed_at=""))
+
+
+def test_a_comment_that_is_not_a_mapping_is_refused() -> None:
+    """The old fetch() shape was a bare string. Reading one is a refusal, not a pass."""
+    with pytest.raises(GateError):
+        check_lead_verdict(pr(all_comments=["**Verdict: Approve.**"]))
+
+
+def test_a_comment_that_is_not_a_verdict_needs_no_timestamp() -> None:
+    """Only verdicts are dated, so ordinary PR chatter cannot jam the gate."""
+    assert check_lead_verdict(
+        pr(
+            all_comments=[
+                {"body": "Rebased onto main."},
+                said("**Verdict: Approve.** 0 blockers, 0 majors."),
+            ]
+        )
+    ).passed
+
+
+# --- dating the head commit ------------------------------------------------
+
+
+def test_the_head_commit_is_dated_by_sha_not_by_position() -> None:
+    """The list order is GitHub's; the SHA is the thing the gate is about."""
+    commits = [
+        {"oid": "abc1234", "committedDate": COMMITTED},
+        {"oid": "def5678", "committedDate": AFTER},
+    ]
+    assert _head_committed_at({"headRefOid": "abc1234", "commits": commits}) == COMMITTED
+
+
+def test_a_head_commit_missing_from_the_commit_list_is_refused() -> None:
+    """Rather than dating the head from some other commit."""
+    with pytest.raises(GateError):
+        _head_committed_at({"headRefOid": "abc1234", "commits": [{"oid": "def5678"}]})
+
+
+def test_a_pr_reporting_no_commits_is_refused() -> None:
+    with pytest.raises(GateError):
+        _head_committed_at({"headRefOid": "abc1234", "commits": []})
 
 
 # --- the authorisation ----------------------------------------------------
