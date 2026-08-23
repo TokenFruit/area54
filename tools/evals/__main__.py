@@ -77,7 +77,15 @@ def main(argv: list[str] | None = None) -> int:
         for trial in range(trials):
             print(f"  {case.name} trial {trial + 1}/{trials}", file=sys.stderr)
             run = run_trial(case, runner)
-            outcomes.append(score_trial(case.expect, run.output, run.changed_files, run.exit_code))
+            outcomes.append(
+                score_trial(
+                    case.expect,
+                    run.output,
+                    run.changed_files,
+                    run.exit_code,
+                    run.files,
+                )
+            )
             if args.save_transcripts:
                 target = Path(args.save_transcripts) / f"{case.name}-{trial + 1}.txt"
                 target.parent.mkdir(parents=True, exist_ok=True)

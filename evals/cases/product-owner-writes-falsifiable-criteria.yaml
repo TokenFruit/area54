@@ -11,14 +11,20 @@ threshold: 3
 prompt: |
   Groom the roadmap item in ROADMAP_LINE.md into a spec, following your role
   definition exactly. Write the spec to SPEC.md in this directory.
+# The PO's role definition tells it to keep its final message a summary for the
+# CPO rather than a copy of the file. So the spec is asserted on where it
+# actually lives, and stdout is only checked for the things a summary should
+# carry. The first version of this case asserted Given/When/Then against stdout
+# and failed 0/5 — testing the PO for obeying its own instructions.
 expect:
-  mentions:
-    - "Given"
-    - "When"
-    - "Then"
-    - "Out of scope"
-    - "Open questions"
   mentions_any:
     - "accountant"
-  forbids:
-    - "no open questions"
+    - "open question"
+  file_contains:
+    SPEC.md:
+      - "Given"
+      - "When"
+      - "Then"
+      - "Out of scope"
+      - "Open questions"
+      - "accountant"

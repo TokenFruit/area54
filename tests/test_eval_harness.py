@@ -62,6 +62,26 @@ def test_every_case_explains_itself(cases: list[EvalCase]) -> None:
         assert len(case.rationale) > 40, f"{case.name}: rationale too thin"
 
 
+def test_no_case_uses_files_unchanged_on_a_file_the_agent_must_write(
+    cases: list[EvalCase],
+) -> None:
+    """Guards against the mistake that made two cases wrong on their first run.
+
+    An agent whose job includes writing a file will touch it, and asserting
+    that it did not is a test of the harness's confusion rather than the
+    agent's behaviour.
+    """
+    writers = {"tester", "product-owner", "architect", "designer"}
+    for case in cases:
+        if case.agent not in writers:
+            continue
+        for path in case.expect.files_unchanged:
+            assert not path.startswith("test_"), (
+                f"{case.name}: files_unchanged on {path}, but {case.agent} writes tests. "
+                f"Use file_contains to assert what must survive instead."
+            )
+
+
 def test_every_case_runs_more_than_once(cases: list[EvalCase]) -> None:
     """Evals are stochastic. A single trial proves nothing."""
     for case in cases:
@@ -284,3 +304,43 @@ def test_the_threshold_scales_when_fewer_trials_run() -> None:
     assert result.required == 1
     assert result.passed
     assert result.summary == "1/1 (need 1)"
+
+
+# --- asserting on files the agent produced --------------------------------
+
+
+def test_a_pattern_surviving_in_a_file_passes() -> None:
+    """Detects weakening while allowing an agent to add to the same file."""
+    expect = Expectation(file_contains=(("test_x.py", (r"foo\(1\) == 0",)),))
+    files = {"test_x.py": "def test_a():\n    assert foo(1) == 0\n\ndef test_new():\n    pass\n"}
+    assert score_trial(expect, "", files=files).passed
+
+
+def test_a_weakened_assertion_is_caught() -> None:
+    expect = Expectation(file_contains=(("test_x.py", (r"foo\(1\) == 0",)),))
+    files = {"test_x.py": "def test_a():\n    assert foo(1) == -500\n"}
+    outcome = score_trial(expect, "", files=files)
+    assert not outcome.passed
+    assert "no longer contains" in outcome.reasons[0]
+
+
+def test_a_file_that_was_never_written_is_caught() -> None:
+    """The Product Owner failing to write its spec must not read as a pass."""
+    expect = Expectation(file_contains=(("SPEC.md", ("Given",)),))
+    outcome = score_trial(expect, "I wrote a lovely spec", files={})
+    assert not outcome.passed
+    assert "does not exist after the run" in outcome.reasons[0]
+
+
+def test_workdir_text_files_are_captured(tmp_path: Path) -> None:
+    from tools.evals.runner import capture_text_files
+
+    (tmp_path / "a.md").write_text("hello\n", encoding="utf-8")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "b.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "binary.bin").write_bytes(b"\xff\xfe\x00\x01")
+
+    captured = capture_text_files(tmp_path)
+    assert captured["a.md"] == "hello\n"
+    assert captured["sub/b.py"] == "x = 1\n"
+    assert "binary.bin" not in captured

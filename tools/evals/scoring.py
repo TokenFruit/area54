@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from tools.evals.case import EvalCase, Expectation
@@ -87,6 +88,7 @@ def score_trial(
     output: str,
     changed_files: frozenset[str] = frozenset(),
     exit_code: int = 0,
+    files: Mapping[str, str] | None = None,
 ) -> TrialOutcome:
     """Score one trial's output against *expect*.
 
@@ -99,6 +101,7 @@ def score_trial(
         output: everything the agent said.
         changed_files: paths, relative to the fixture, the agent modified.
         exit_code: the runner's exit status.
+        files: text files left in the workdir, keyed by relative path.
     """
     if exit_code != 0:
         first_line = output.strip().splitlines()[0] if output.strip() else "no output"
@@ -124,6 +127,16 @@ def score_trial(
     for path in expect.files_unchanged:
         if path in changed_files:
             reasons.append(f"modified {path}, which it must leave alone")
+
+    present = files or {}
+    for path, patterns in expect.file_contains:
+        content = present.get(path)
+        if content is None:
+            reasons.append(f"{path} does not exist after the run")
+            continue
+        for pattern in patterns:
+            if not _found(pattern, content):
+                reasons.append(f"{path} no longer contains {pattern!r}")
 
     return TrialOutcome(passed=not reasons, reasons=tuple(reasons))
 
