@@ -168,3 +168,26 @@ def test_malformed_settings_are_rejected(tmp_path: Path) -> None:
     path.write_text("{not json", encoding="utf-8")
     with pytest.raises(SettingsError, match="not valid JSON"):
         load_settings(path)
+
+
+# --- deployed artefacts need a reader somewhere ---------------------------
+
+
+def test_every_deployed_path_is_accounted_for() -> None:
+    """The gap that let telemetry ship with no way to read it.
+
+    The payload check only looked at hooks *referenced by settings*. The
+    telemetry reader is referenced by nothing, so target repos collected
+    events they could not read.
+    """
+    from tools.settings import check_deployed_paths_have_a_reader
+
+    assert check_deployed_paths_have_a_reader() == []
+
+
+def test_a_tracked_path_is_documented_with_where_its_reader_lives() -> None:
+    from tools.settings import DEPLOYED_PATH_READERS
+
+    assert ".claude/telemetry.jsonl" in DEPLOYED_PATH_READERS
+    # Not just present — it has to say where the reader is and why.
+    assert "tools/telemetry.py" in DEPLOYED_PATH_READERS[".claude/telemetry.jsonl"]

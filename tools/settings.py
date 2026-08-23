@@ -190,6 +190,52 @@ def check_referenced_files_are_deployed(settings: Settings) -> list[str]:
     return failures
 
 
+#: Paths a deployed repo will contain, and the module in area54 that reads or
+#: writes each. A deployed artefact whose counterpart stays here is fine — but
+#: it has to be a decision, recorded, rather than an oversight.
+#:
+#: This exists because the first version of the payload check only looked at
+#: hooks *referenced by settings*. The telemetry reader is referenced by
+#: nothing, so target repos collected events they had no way to read.
+DEPLOYED_PATH_READERS: dict[str, str] = {
+    ".claude/telemetry.jsonl": "tools/telemetry.py reads it, and stays in area54 "
+    "deliberately: `python -m tools.telemetry <repo>` reports on any target, so "
+    "the toolchain does not have to ship into every repo it touches.",
+}
+
+
+def check_deployed_paths_have_a_reader(root: Path = REPO_ROOT) -> list[str]:
+    """Return failures for deployed paths nothing accounts for.
+
+    A hook that writes a file into a target repo is only half a feature. The
+    other half is something able to read it, and that something is either in
+    the payload or explicitly recorded as staying here.
+    """
+    from tools.deploy import PAYLOAD
+
+    hooks_dir = root / ".claude" / "hooks"
+    if not hooks_dir.is_dir():
+        return []
+
+    sources = [src for src, _ in PAYLOAD]
+    failures = []
+    for hook in sorted(hooks_dir.glob("*.py")):
+        text = hook.read_text(encoding="utf-8")
+        for path, _ in DEPLOYED_PATH_READERS.items():
+            if path.rsplit("/", 1)[-1] in text:
+                break
+        else:
+            # The hook writes nothing we track; nothing to account for.
+            continue
+        deployed = any(
+            str(hook.relative_to(root)) == src or str(hook.relative_to(root)).startswith(f"{src}/")
+            for src in sources
+        )
+        if not deployed:
+            failures.append(f"{hook.name} writes a tracked path but is not in the deploy PAYLOAD.")
+    return failures
+
+
 def validate(path: Path = SETTINGS_PATH) -> list[str]:
     """Run every settings check. Returns all failures."""
     settings = load_settings(path)
@@ -198,4 +244,5 @@ def validate(path: Path = SETTINGS_PATH) -> list[str]:
         *check_a_guard_backs_the_push_rules(settings),
         *check_referenced_files_exist(settings),
         *check_referenced_files_are_deployed(settings),
+        *check_deployed_paths_have_a_reader(),
     ]

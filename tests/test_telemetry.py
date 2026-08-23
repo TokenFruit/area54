@@ -129,3 +129,24 @@ def test_the_recorder_never_raises_on_junk(tmp_path: Path, monkeypatch) -> None:
     recorder.record({})
     recorder.record({"tool_input": "not a dict"})
     assert (tmp_path / ".claude" / "telemetry.jsonl").is_file()
+
+
+# --- reading a target repo ------------------------------------------------
+
+
+def test_a_target_repos_log_is_read_from_here(tmp_path: Path) -> None:
+    """Pipelines run in target repos; the reader stays in area54."""
+    from tools.telemetry import main
+
+    target = tmp_path / "area-52" / ".claude"
+    target.mkdir(parents=True)
+    (target / "telemetry.jsonl").write_text(
+        json.dumps({"ts": 1.0, "subagent_type": "builder-backend"}) + "\n", encoding="utf-8"
+    )
+    assert main([str(tmp_path / "area-52")]) == 0
+
+
+def test_a_missing_repo_is_reported_not_ignored(tmp_path: Path) -> None:
+    from tools.telemetry import main
+
+    assert main([str(tmp_path / "nope")]) == 1
