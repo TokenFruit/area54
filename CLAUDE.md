@@ -65,6 +65,8 @@ recorded and the question is not asked again**: the Architect reads it. See
 | Typecheck | `mypy tools tests` |
 | Unit tests | `pytest` |
 | Agent, command and constitution checks | `python tools/validate.py` |
+| What is in flight, and what is stalled | `python -m tools.orchestrate status --repo <owner/name>` |
+| The next action for each item | `python -m tools.orchestrate next --repo <owner/name> [--run]` |
 | Behavioural evals | `python -m tools.evals` (live; costs money) |
 | List eval cases | `python -m tools.evals --list` |
 | Build | none — the repo is the plugin |

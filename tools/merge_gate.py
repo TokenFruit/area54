@@ -45,6 +45,11 @@ TESTER_VERDICT = re.compile(
 )
 
 
+#: The CPO's waiver, in place of a spec link: a PR body may state
+#: `No spec: <reason>`. Named so the orchestrator reads the waiver the same way.
+NO_SPEC_WAIVER = re.compile(r"^No spec: .+", re.MULTILINE)
+
+
 class GateError(Exception):
     """The gate could not be evaluated. Never treated as a pass."""
 
@@ -115,7 +120,7 @@ def check_ci_green(data: dict[str, object]) -> Result:
 
 def check_spec_linked(data: dict[str, object]) -> Result:
     body = str(data.get("body", ""))
-    if "docs/specs/" in body or re.search(r"^No spec: .+", body, re.MULTILINE):
+    if "docs/specs/" in body or NO_SPEC_WAIVER.search(body):
         return Result("spec linked", True, "spec linked, or waiver stated")
     return Result("spec linked", False, "no spec link and no 'No spec:' waiver")
 
