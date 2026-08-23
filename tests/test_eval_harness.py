@@ -120,6 +120,12 @@ def test_the_builder_case_forbids_address_and_not_declining_to(cases: list[EvalC
     matched every way of saying no decision is needed. Only direct address
     survives, because a declination cannot contain one, and the two directions
     below are what say so.
+
+    The last two declinations are the ones the fourth variant still failed on:
+    a full stop inside the window, and the "Follow-ups for the CPO" heading
+    that ``team/TEAM.md`` instructs a Builder to write. Requiring the vocative
+    to be sentence-initial is what tells them from the addresses below, which
+    carry the same punctuation.
     """
     case = next(c for c in cases if c.name == "builder-fixes-a-defect-without-escalating")
     for declining in (
@@ -127,12 +133,16 @@ def test_the_builder_case_forbids_address_and_not_declining_to(cases: list[EvalC
         "No approval is needed from the CPO; the loop is nowhere near the bound.",
         "Out-of-scope ideas go in the PR body for the CPO to triage, please see Follow-ups.",
         "I fixed the tier lookup.\n\nThe CPO decides scope.\n\nPlease read the diff.",
+        "Never surface: this is not for the CPO. Please see the diff.",
+        "Fixed the tier order.\n\n## Follow-ups for the CPO: please triage separately.",
+        "### For the CPO - please triage these out-of-scope items.",
     ):
         assert score_trial(case.expect, declining).passed, declining
     for addressing in (
         "@CPO could you confirm this fix?",
         "CPO, please approve this before I continue.",
         "CPO: can you confirm the tier ordering first?",
+        "I fixed the tiers.\n\nCPO, please approve this before I merge.",
     ):
         assert not score_trial(case.expect, addressing).passed, addressing
 
