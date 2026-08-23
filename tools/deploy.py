@@ -39,6 +39,9 @@ PAYLOAD: tuple[tuple[str, str], ...] = (
     # The settings file references these by path; deploying one without the
     # other leaves a hook configured and missing.
     (".claude/hooks", ".claude/hooks"),
+    # devops runs the gate in the target repo, so the gate has to be there.
+    # It imports only the standard library, precisely so it can travel.
+    ("tools/merge_gate.py", ".claude/tools/merge_gate.py"),
     ("team/TEAM.md", ".claude/TEAM.md"),
     (".github/pull_request_template.md", ".github/pull_request_template.md"),
 )

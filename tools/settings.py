@@ -18,6 +18,7 @@ Three things go wrong in this file and none were caught by a test:
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -240,6 +241,36 @@ def check_deployed_paths_have_a_reader(root: Path = REPO_ROOT) -> list[str]:
     return failures
 
 
+def check_agent_commands_are_deployed(root: Path = REPO_ROOT) -> list[str]:
+    """Return failures for tools an agent is told to run but would not have.
+
+    An agent prompt naming a command is a promise that the command exists where
+    the agent runs. devops was told to run the merge gate in a target repo
+    while the gate stayed here, so the instruction resolved to
+    ModuleNotFoundError at the moment of the merge.
+
+    Only paths under `.claude/` are checked: those are the ones the installer
+    is responsible for delivering.
+    """
+    from tools.deploy import PAYLOAD
+
+    destinations = [dst for _, dst in PAYLOAD]
+    agents_dir = root / ".claude" / "agents"
+    if not agents_dir.is_dir():
+        return []
+
+    referenced = re.compile(r"(\.claude/[\w./-]+\.(?:py|sh))")
+    failures = []
+    for agent in sorted(agents_dir.glob("*.md")):
+        for path in sorted(set(referenced.findall(agent.read_text(encoding="utf-8")))):
+            if not any(path == dst or path.startswith(f"{dst}/") for dst in destinations):
+                failures.append(
+                    f"{agent.name}: tells the agent to run {path}, which the deploy PAYLOAD "
+                    f"does not deliver. In a target repo that command does not exist."
+                )
+    return failures
+
+
 def validate(path: Path = SETTINGS_PATH) -> list[str]:
     """Run every settings check. Returns all failures."""
     settings = load_settings(path)
@@ -249,4 +280,5 @@ def validate(path: Path = SETTINGS_PATH) -> list[str]:
         *check_referenced_files_exist(settings),
         *check_referenced_files_are_deployed(settings),
         *check_deployed_paths_have_a_reader(),
+        *check_agent_commands_are_deployed(),
     ]

@@ -189,3 +189,44 @@ def test_a_tracked_path_is_documented_with_where_its_reader_lives() -> None:
     assert ".claude/telemetry.jsonl" in DEPLOYED_PATH_READERS
     # Not just present — it has to say where the reader is and why.
     assert "tools/telemetry.py" in DEPLOYED_PATH_READERS[".claude/telemetry.jsonl"]
+
+
+# --- what agents are told to run must exist where they run ----------------
+
+
+def test_every_tool_an_agent_is_told_to_run_is_deployed() -> None:
+    """The gap that shipped: devops was told to run the merge gate in a target
+    repo while the gate stayed in area54, so the instruction resolved to
+    ModuleNotFoundError at the moment of the merge."""
+    from tools.settings import check_agent_commands_are_deployed
+
+    assert check_agent_commands_are_deployed() == []
+
+
+def test_an_undeployed_tool_reference_is_caught(tmp_path: Path) -> None:
+    from tools.settings import check_agent_commands_are_deployed
+
+    agents = tmp_path / ".claude" / "agents"
+    agents.mkdir(parents=True)
+    (agents / "devops.md").write_text(
+        "Run `python3 .claude/tools/nowhere.py 1 --repo x/y` first.\n", encoding="utf-8"
+    )
+    failures = check_agent_commands_are_deployed(tmp_path)
+    assert len(failures) == 1
+    assert "does not deliver" in failures[0]
+
+
+def test_the_merge_gate_travels_with_the_team() -> None:
+    """devops runs the gate in the target repo, so the gate has to be there."""
+    from tools.deploy import PAYLOAD
+
+    assert any(dst == ".claude/tools/merge_gate.py" for _, dst in PAYLOAD)
+
+
+def test_the_merge_gate_imports_only_the_standard_library() -> None:
+    """It travels alone: a target repo has no tools package to import from."""
+    source = (Path(__file__).resolve().parent.parent / "tools" / "merge_gate.py").read_text(
+        encoding="utf-8"
+    )
+    assert "from tools." not in source
+    assert "import tools" not in source
