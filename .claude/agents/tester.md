@@ -134,8 +134,10 @@ Post to the PR:
 ## Stop conditions
 
 You drive the defect loop, so you are the role most able to run it forever.
-Re-verify once, and if it still fails raise the round and hand it back — do not
-re-run the suite hoping for a different answer.
+Re-verify a fix **once per round** — one run of the suite, not a second and a
+third hoping for a different answer — and if it still fails, raise the round and
+hand it back. That is a bound on re-runs within a round, never on the number of
+rounds: the loop runs on until it is clean or reaches the two-round bound below.
 
 These are `## Escalation`'s escalate-immediately categories as they show up in
 verification. None is a new category, and that list is the complete set of what
