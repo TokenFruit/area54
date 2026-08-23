@@ -178,6 +178,25 @@ def test_the_section_stops_at_the_next_heading() -> None:
     assert [heading for heading, _ in subsections(section)] == [3]
 
 
+def test_a_heading_inside_a_fence_does_not_end_the_section(tmp_path: Path) -> None:
+    """Documenting the required shape inside the section must not truncate it.
+
+    A fenced `## ` line is an example, exactly as a fenced bullet is. Before
+    the fence state was consulted first, this failed with "has 0 `###`
+    subsection(s)" on a constitution that was entirely correct.
+    """
+    team = write(tmp_path, escalate=6, never=5)
+    team.write_text(
+        team.read_text(encoding="utf-8").replace(
+            "Governs unprompted escalation only.",
+            "Governs unprompted escalation only. The shape:\n\n"
+            "```\n## Escalation\n\n### Reaches the CPO immediately\n\n- one per category\n```",
+        ),
+        encoding="utf-8",
+    )
+    assert validate(team) == []
+
+
 def test_the_check_is_blind_to_wording(tmp_path: Path) -> None:
     """The cost of resolved question 4, stated as a test so nobody forgets it.
 

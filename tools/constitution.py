@@ -53,6 +53,11 @@ def escalation_section(text: str) -> list[tuple[int, str]]:
     number, dropping them renumbers nothing. That is what lets a failure name
     the exact `###` heading it is about.
 
+    Fence state is consulted **before** the `## ` test, because a heading inside
+    a fence is an example too: a fenced sample of the required shape would
+    otherwise truncate the section at its own first heading and fail a
+    constitution that is entirely correct.
+
     Raises:
         ConstitutionError: the file has no `## Escalation` section.
     """
@@ -63,12 +68,12 @@ def escalation_section(text: str) -> list[tuple[int, str]]:
         if not found:
             found = line.startswith(ESCALATION_HEADING)
             continue
-        if line.startswith("## "):
-            break
         if FENCE.match(line):
             fenced = not fenced
             continue
         if not fenced:
+            if line.startswith("## "):
+                break
             section.append((number, line))
     if not found:
         raise ConstitutionError(
