@@ -203,6 +203,55 @@ def test_a_heading_inside_a_fence_does_not_end_the_section(tmp_path: Path) -> No
     assert validate(team) == []
 
 
+def fence_the_shape_above_the_heading(team: Path, escalate: int, never: int) -> Path:
+    """Put a fenced example of the required shape above `## Escalation`.
+
+    ADR-0002 mandates the section's shape, so documenting that shape in the
+    file's introduction is the obvious next edit. The example is given full
+    lists so that a check reading it instead of the real section sees a
+    contract that passes.
+    """
+    team.write_text(
+        team.read_text(encoding="utf-8").replace(
+            "# Team\n\n",
+            "# Team\n\nThe shape every constitution has to carry:\n\n"
+            "```markdown\n## Escalation\n\n### Reaches the CPO immediately\n\n"
+            + "".join(f"- example {n}\n" for n in range(escalate))
+            + "\n### Never surfaced\n\n"
+            + "".join(f"- example {n}\n" for n in range(never))
+            + "```\n\n",
+        ),
+        encoding="utf-8",
+    )
+    return team
+
+
+def test_a_fenced_heading_above_the_section_is_not_the_section(tmp_path: Path) -> None:
+    """A decayed contract must not pass because an example above it is intact.
+
+    Tracking fence state only from the heading onwards fails twice over here:
+    the fenced example is taken for the section, and its closing fence is then
+    read as an opening one, so the real section is skipped as fenced. The two
+    errors cancel into a clean `validate()` on a constitution with one entry in
+    each list — the exact file this check exists to catch.
+    """
+    team = fence_the_shape_above_the_heading(
+        write(tmp_path, escalate=1, never=1), escalate=6, never=5
+    )
+    failures = validate(team)
+    assert failures, "a one-entry escalate list must not validate clean"
+    assert any("at least 6" in failure for failure in failures)
+    assert any("at least 5" in failure for failure in failures)
+
+
+def test_a_fenced_heading_above_an_intact_section_still_passes(tmp_path: Path) -> None:
+    """The other direction: the example is dropped, the real section is read."""
+    team = fence_the_shape_above_the_heading(
+        write(tmp_path, escalate=6, never=5), escalate=6, never=5
+    )
+    assert validate(team) == []
+
+
 def test_the_check_is_blind_to_wording(tmp_path: Path) -> None:
     """The cost of resolved question 4, stated as a test so nobody forgets it.
 

@@ -55,10 +55,16 @@ def escalation_section(text: str) -> list[tuple[int, str]]:
     number, dropping them renumbers nothing. That is what lets a failure name
     the exact `###` heading it is about.
 
-    Fence state is consulted **before** the `## ` test, because a heading inside
-    a fence is an example too: a fenced sample of the required shape would
-    otherwise truncate the section at its own first heading and fail a
-    constitution that is entirely correct.
+    Fence state is tracked from the **first line of the file**, and consulted
+    before both the heading test and the `## ` break, because a heading inside a
+    fence is an example too. Tracking it only after the heading is found is
+    worse than not tracking it at all: a fenced sample of the required shape
+    placed above the real section — the obvious thing to write, since ADR-0002
+    mandates that shape — is taken for the section, and its *closing* fence is
+    then read as an opening one, inverting the state for the rest of the file so
+    the genuine section is dropped. That combination passes a constitution whose
+    lists have decayed to one entry each, which is the single failure this
+    module exists to see.
 
     Raises:
         ConstitutionError: the file has no `## Escalation` section.
@@ -67,16 +73,17 @@ def escalation_section(text: str) -> list[tuple[int, str]]:
     found = False
     fenced = False
     for number, line in enumerate(text.splitlines(), start=1):
-        if not found:
-            found = line.strip() == ESCALATION_HEADING
-            continue
         if FENCE.match(line):
             fenced = not fenced
             continue
-        if not fenced:
-            if line.startswith("## "):
-                break
-            section.append((number, line))
+        if fenced:
+            continue
+        if not found:
+            found = line.strip() == ESCALATION_HEADING
+            continue
+        if line.startswith("## "):
+            break
+        section.append((number, line))
     if not found:
         raise ConstitutionError(
             f"TEAM.md: no `{ESCALATION_HEADING}` section. The escalation contract is stated "
