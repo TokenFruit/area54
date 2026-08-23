@@ -94,6 +94,31 @@ def load_agents(directory: Path = AGENTS_DIR) -> list[Agent]:
     return [parse_agent(p) for p in paths]
 
 
+def cli_invocation(agent: Agent, prompt: str, executable: str = "claude") -> list[str]:
+    """Return the argv that runs *agent* headlessly against *prompt*.
+
+    The agent is applied with ``--append-system-prompt`` and its own frontmatter
+    tool grants, rather than by asking a parent session to delegate to it: the
+    eight roles are not registered as subagent types in every environment, and a
+    delegation that fails to resolve returns a plausible answer produced by
+    nobody. Shared by the eval runner and the orchestrator, so the team has
+    exactly one way of invoking an agent.
+    """
+    return [
+        executable,
+        "-p",
+        prompt,
+        "--append-system-prompt",
+        agent.body.strip(),
+        "--allowed-tools",
+        *agent.tools,
+        "--model",
+        agent.model,
+        "--permission-mode",
+        "acceptEdits",
+    ]
+
+
 def check_model_is_pinned(agent: Agent) -> list[str]:
     """Return the reasons *agent* fails the TF-002 model-pinning rule."""
     model = agent.model
