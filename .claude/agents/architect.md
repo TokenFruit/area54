@@ -93,6 +93,13 @@ question. That question is the first step of this job rather than a mid-pipeline
 interruption: there is provably no recorded decision to read, and the answer is
 what decides which of the two paths below you are on.
 
+It is still an unprompted message to the CPO, so it names its category like
+every other one — **an impediment your own stop conditions did not clear**,
+since those conditions send you to every ADR the design depends on, this one is
+provably not on disk, and only the CPO knows whether a decision was made out of
+band. That is the same trigger and the same category the two Builders name for
+the same missing file.
+
 **If `docs/adr/0001-stack.md` does exist, the decision is already recorded. Read
 it, and never ask the question again.** It is asked once per project, at the
 beginning, and an ADR on disk is the answer.
