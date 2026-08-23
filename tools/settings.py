@@ -18,7 +18,6 @@ Three things go wrong in this file and none were caught by a test:
 from __future__ import annotations
 
 import json
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -329,6 +328,12 @@ DEPLOYED_PATH_READERS: dict[str, str] = {
 }
 
 
+#: A path under `.claude/` that a hook writes into whichever repo it runs in.
+#: Matched from the hook's source, so adding a new one is what triggers the
+#: check rather than remembering to register it.
+_WRITES_INTO_TARGET = re.compile(r"[\"\']((?:\.claude/)?[\w.-]+\.jsonl)[\"\']")
+
+
 def check_deployed_paths_have_a_reader(root: Path = REPO_ROOT) -> list[str]:
     """Return failures for paths written into a target that nothing accounts for.
 
@@ -343,18 +348,14 @@ def check_deployed_paths_have_a_reader(root: Path = REPO_ROOT) -> list[str]:
     failures = []
     for hook in sorted(hooks_dir.glob("*.py")):
         text = hook.read_text(encoding="utf-8")
-        if not any(path.rsplit("/", 1)[-1] in text for path in DEPLOYED_PATH_READERS):
-            # The hook writes nothing we track; nothing to account for.
-            continue
-        # Everything under hooks/ is carried by the plugin, by convention rather
-        # than by a list. The failure this once caught — a hook writing into a
-        # target that no deployed reader could open — now needs the registry
-        # above to say who reads it.
-        if not (root / ".claude-plugin" / "plugin.json").is_file():
-            failures.append(
-                f"{hook.name} writes a tracked path, but there is no plugin manifest, so "
-                f"nothing carries it to a target repo."
-            )
+        for match in _WRITES_INTO_TARGET.findall(text):
+            if match not in DEPLOYED_PATH_READERS:
+                failures.append(
+                    f"{hook.name} writes {match} into every target repo, and "
+                    f"DEPLOYED_PATH_READERS does not say what reads it. Half a feature: "
+                    f"targets collect data nobody can open. Name the reader, or stop "
+                    f"writing the file."
+                )
     return failures
 
 
@@ -394,22 +395,60 @@ def check_agent_commands_are_deployed(root: Path = REPO_ROOT) -> list[str]:
     return failures
 
 
-def check_plugin_bin_is_executable(root: Path = REPO_ROOT) -> list[str]:
-    """Return failures for tools on PATH that could not actually run.
+#: The spelling of a tool that only resolves inside area54. A target repo has no
+#: `tools` package, so anything telling an agent to run one of these is telling
+#: it to fail — and the failure reads as the tool refusing rather than the
+#: instruction being wrong.
+AREA54_ONLY = "python -m tools."
 
-    A file in ``bin/`` without the executable bit is on PATH and refuses to
-    start, which reads to an agent as "command not found" at the moment it
-    needed the tool.
+
+def check_hook_messages_name_a_command_that_exists(root: Path = REPO_ROOT) -> list[str]:
+    """Return failures for hook text telling an agent to run an area54-only tool.
+
+    A hook runs in the target repo, and what it prints is an instruction the
+    agent follows. The shell guard refused a merge and told the agent to run
+    `python -m tools.merge_gate` — correct here, `No module named tools` there,
+    at the one irreversible step in the pipeline.
+
+    :func:`check_agent_commands_are_deployed` could not have caught it: that one
+    reads agent prompts, and this was a string inside a hook.
     """
-    bin_dir = root / "bin"
-    if not bin_dir.is_dir():
+    hooks_dir = root / "hooks"
+    if not hooks_dir.is_dir():
         return []
     return [
-        f"bin/{entry.name} is not executable. It is on PATH in every target repo and "
-        f"would fail to start."
-        for entry in sorted(bin_dir.iterdir())
-        if entry.is_file() and not os.access(entry, os.X_OK)
+        f"hooks/{hook.name}: names `{AREA54_ONLY}...`, which does not exist in a target "
+        f"repo. Hook output is an instruction the agent follows — name the bin/ command."
+        for hook in sorted(hooks_dir.glob("*.py"))
+        if AREA54_ONLY in hook.read_text(encoding="utf-8")
     ]
+
+
+def check_agent_commands_are_permitted(settings: Settings, root: Path = REPO_ROOT) -> list[str]:
+    """Return failures for bin/ tools an agent is told to run but cannot.
+
+    Half the pipeline's autonomy is the permission list. A tool that travels,
+    resolves on PATH, and is not auto-approved stops a headless run dead — and
+    only in a target repo, because in area54 the source spelling is covered by
+    a different rule. That asymmetry is what makes it invisible here.
+    """
+    bin_dir = root / "bin"
+    agents_dir = root / "agents"
+    if not bin_dir.is_dir() or not agents_dir.is_dir():
+        return []
+
+    prompts = "\n".join(a.read_text(encoding="utf-8") for a in sorted(agents_dir.glob("*.md")))
+    failures = []
+    for entry in sorted(bin_dir.iterdir()):
+        if not entry.is_file() or entry.name not in prompts:
+            continue
+        if not any(rule.startswith(f"Bash({entry.name}") for rule in settings.allow):
+            failures.append(
+                f"settings.json: an agent is told to run `{entry.name}`, and no allow rule "
+                f"covers it. Prefix matching cannot reach it from any other rule, so a "
+                f"headless run in a target repo refuses the call and stops."
+            )
+    return failures
 
 
 def validate(path: Path = SETTINGS_PATH) -> list[str]:
@@ -425,5 +464,6 @@ def validate(path: Path = SETTINGS_PATH) -> list[str]:
         *check_the_repo_installs_its_own_plugin(settings),
         *check_deployed_paths_have_a_reader(),
         *check_agent_commands_are_deployed(),
-        *check_plugin_bin_is_executable(),
+        *check_hook_messages_name_a_command_that_exists(),
+        *check_agent_commands_are_permitted(settings),
     ]

@@ -229,3 +229,26 @@ def test_the_hook_scripts_the_manifest_names_exist() -> None:
     assert named
     for path in named:
         assert (REPO_ROOT / path.replace("${CLAUDE_PLUGIN_ROOT}/", "")).is_file(), path
+
+
+def test_the_inert_rule_says_what_it_was_measured_against() -> None:
+    """A rule whose reason expired should say so, not just refuse.
+
+    `check_no_inert_fields` fails on the presence of the key. When the CLI
+    starts honouring plugin `settings`, moving the permission list there is the
+    correct move — and this validator would refuse it, citing a measurement two
+    versions old, with nothing telling anyone the reason had expired.
+    """
+    from tools.plugin import MEASURED_AGAINST
+
+    failures = check_no_inert_fields({"settings": {"permissions": {}}})
+    assert len(failures) == 1
+    assert MEASURED_AGAINST in failures[0]
+    assert "re-measure" in failures[0]
+
+
+def test_the_bin_check_is_not_duplicated_in_the_roll_up() -> None:
+    """It ran twice and reported every failure twice."""
+    import tools.settings
+
+    assert not hasattr(tools.settings, "check_plugin_bin_is_executable")

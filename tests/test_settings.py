@@ -368,3 +368,87 @@ def test_a_merge_authorisation_is_never_tracked() -> None:
         f"pass; committing it would put a merge permit in the repo and deploy it "
         f"to every target."
     )
+
+
+# --- what a hook tells an agent to run, in a target repo ------------------
+
+
+def test_the_guard_names_a_command_that_exists_in_a_target() -> None:
+    """The blocker: the guard refused a merge and named `python -m tools...`.
+
+    There is no `tools` package in a target repo. devops would run it, get
+    `No module named tools`, and read the failure as the gate refusing.
+    """
+    from tools.settings import check_hook_messages_name_a_command_that_exists
+
+    assert check_hook_messages_name_a_command_that_exists() == []
+
+
+def test_a_hook_naming_an_area54_only_tool_is_caught(tmp_path: Path) -> None:
+    from tools.settings import check_hook_messages_name_a_command_that_exists
+
+    hooks = tmp_path / "hooks"
+    hooks.mkdir()
+    (hooks / "guard.py").write_text(
+        'print("Run `python -m tools.merge_gate 1 --repo x/y` first.")\n', encoding="utf-8"
+    )
+    failures = check_hook_messages_name_a_command_that_exists(tmp_path)
+    assert len(failures) == 1
+    assert "does not exist in a target repo" in failures[0]
+
+
+def test_the_guard_refusal_actually_names_the_bin_command() -> None:
+    """End to end, not just the absence of the wrong spelling."""
+    refusal = guard.blocks("gh pr merge 12 --squash")
+    assert refusal is not None
+    assert "merge-gate 12 --repo" in refusal
+
+
+# --- a tool that travels and is not permitted stops the pipeline ----------
+
+
+def test_every_bin_tool_an_agent_is_told_to_run_is_permitted() -> None:
+    """Invisible in area54: `Bash(python -m tools:*)` covers the source spelling."""
+    from tools.settings import check_agent_commands_are_permitted
+
+    assert check_agent_commands_are_permitted(load_settings(SETTINGS_PATH)) == []
+
+
+def test_an_unpermitted_bin_tool_is_caught(tmp_path: Path) -> None:
+    from tools.settings import check_agent_commands_are_permitted
+
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "merge-gate").write_text("#!/bin/sh\n", encoding="utf-8")
+    (tmp_path / "agents").mkdir()
+    (tmp_path / "agents" / "devops.md").write_text(
+        "Run `merge-gate <pr> --repo <owner/name>`.\n", encoding="utf-8"
+    )
+    s = settings_from({"permissions": {"allow": ["Bash(git status:*)"], "deny": []}}, tmp_path)
+    failures = check_agent_commands_are_permitted(s, tmp_path)
+    assert len(failures) == 1
+    assert "no allow rule covers it" in failures[0]
+
+
+# --- a hook that writes into every target needs a named reader ------------
+
+
+def test_an_unregistered_written_path_is_caught(tmp_path: Path) -> None:
+    """The check this replaced could not fail: its only branch needed a
+    committed file to be missing. This is the telemetry case, re-run."""
+    from tools.settings import check_deployed_paths_have_a_reader
+
+    hooks = tmp_path / "hooks"
+    hooks.mkdir()
+    (hooks / "record_cost.py").write_text('LOG = ".claude/costs.jsonl"\n', encoding="utf-8")
+    failures = check_deployed_paths_have_a_reader(tmp_path)
+    assert len(failures) == 1
+    assert "does not say what reads it" in failures[0]
+
+
+def test_a_registered_written_path_passes(tmp_path: Path) -> None:
+    from tools.settings import check_deployed_paths_have_a_reader
+
+    hooks = tmp_path / "hooks"
+    hooks.mkdir()
+    (hooks / "record_event.py").write_text('LOG = ".claude/telemetry.jsonl"\n', encoding="utf-8")
+    assert check_deployed_paths_have_a_reader(tmp_path) == []

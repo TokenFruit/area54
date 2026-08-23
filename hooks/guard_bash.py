@@ -78,8 +78,9 @@ def _blocks_single(command: str) -> str | None:
 def _merge_refusal(tokens: list[str]) -> str | None:
     """Refuse a merge unless the gate actually passed for this exact PR.
 
-    Not "unless the agent believes the gate passed". tools/merge_gate.py writes
-    a short-lived authorisation naming the PR and head SHA; without a valid one
+    Not "unless the agent believes the gate passed". The gate (`merge-gate`, from
+    the plugin's bin/) writes a short-lived authorisation naming the PR and head
+    SHA; without a valid one
     that names *this* PR, the merge is refused. An agent cannot author the
     authorisation by deciding it deserves one — the gate writes it, and only
     after every rule passed.
@@ -92,7 +93,8 @@ def _merge_refusal(tokens: list[str]) -> str | None:
     if token is None:
         return (
             f"refusing to merge PR #{requested}: no valid merge authorisation. "
-            f"Run `python -m tools.merge_gate {requested} --repo <owner/name>` first. "
+            f"Run `merge-gate {requested} --repo <owner/name>` first — the plugin puts "
+            f"that on PATH, so it resolves wherever the team is installed. "
             f"If it refuses, report that to the CPO rather than working around it."
         )
     if str(token.get("pr")) != requested:

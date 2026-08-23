@@ -123,6 +123,57 @@ def target_settings() -> str:
     return json.dumps(settings, indent=2) + "\n"
 
 
+#: Where Claude Code records marketplaces. The key is the marketplace **name**,
+#: globally, and the first registration wins — a second repo declaring the same
+#: name with a different source is dropped without a message.
+KNOWN_MARKETPLACES = Path.home() / ".claude" / "plugins" / "known_marketplaces.json"
+
+
+def registered_source(name: str, registry: Path = KNOWN_MARKETPLACES) -> dict[str, str] | None:
+    """Return the source already registered under *name* on this machine."""
+    try:
+        data = json.loads(registry.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+    entry = data.get(name)
+    if not isinstance(entry, dict) or not isinstance(entry.get("source"), dict):
+        return None
+    return {str(k): str(v) for k, v in entry["source"].items()}
+
+
+def marketplace_collision(registry: Path = KNOWN_MARKETPLACES) -> str | None:
+    """Return a warning if this machine already means something else by the name.
+
+    ``extraKnownMarketplaces`` does not create a per-project marketplace. area54
+    registers `tokenfruit` as its own working copy so it can run the team it is
+    editing; a target repo asks for the same name and gets the working copy
+    instead of GitHub — silently, and only on this machine.
+
+    That is not hypothetical: it is why the first live verification of this
+    installer was served from the previous commit rather than from the branch it
+    was verifying. The collision is a property of the platform and cannot be
+    designed away here — two marketplace names would need two marketplace roots,
+    and a plugin source may not contain "..". So it is detected and said out
+    loud instead.
+    """
+    name = str(marketplace_manifest()["name"])
+    existing = registered_source(name, registry)
+    if existing is None or existing == MARKETPLACE_SOURCE:
+        return None
+    described = existing.get("path") or existing.get("repo") or str(existing)
+    return (
+        f"`{name}` is already registered on this machine as {existing.get('source')} "
+        f"{described}, and the first registration wins. A session in the target will load "
+        f"the team from there, not from {MARKETPLACE_SOURCE['repo']} — so "
+        f"`claude plugin update` will not update it, and uncommitted edits in that checkout "
+        f"are live in the target.\n"
+        f"  On a machine that only consumes the team, run "
+        f"`claude plugin marketplace remove {name}` once and it will resolve to GitHub.\n"
+        f"  On this one, where area54 is being developed, that is the intended behaviour — "
+        f"but the target is running your working copy. Say so before trusting a result."
+    )
+
+
 def source_version() -> str:
     """Return the area54 commit being deployed, or a marker if unknown."""
     try:
@@ -219,7 +270,40 @@ def plan(target: Path) -> list[Change]:
             changes.append(Change(rel, "locally-edited"))
         else:
             changes.append(Change(rel, "update"))
+    changes += [Change(rel, "superseded") for rel in superseded(target)]
     return changes
+
+
+def superseded(target: Path) -> list[str]:
+    """Return files a previous installation wrote that this one no longer writes.
+
+    Every already-deployed repo has eighteen of them: the agents, commands and
+    hooks that used to be copied. Leaving them is not merely untidy —
+    ``.claude/agents/`` is a directory Claude Code discovers by convention, so a
+    frozen copy of all eight prompts keeps loading alongside the plugin's, and
+    the repo runs two teams that can disagree. Migrating those repos is what
+    TF-003 is for, so the migration is part of installing rather than a note in
+    a README.
+
+    Only paths the recorded manifest claims are removed. Anything this installer
+    did not write is not ours to delete.
+    """
+    ours = set(read_manifest(target))
+    current = {rel for _, rel in _file_contents()}
+    return sorted(rel for rel in ours - current if (target / rel).exists())
+
+
+def _prune(target: Path, paths: list[str]) -> None:
+    """Delete *paths* and any directory they leave empty."""
+    for rel in paths:
+        path = target / rel
+        path.unlink(missing_ok=True)
+        parent = path.parent
+        # Stop at the target itself; an empty `.claude/agents` still loads as a
+        # component directory, so the directory has to go too.
+        while parent != target and parent.is_dir() and not any(parent.iterdir()):
+            parent.rmdir()
+            parent = parent.parent
 
 
 def install(target: Path, force: bool = False) -> list[Change]:
@@ -244,6 +328,8 @@ def install(target: Path, force: bool = False) -> list[Change]:
             + "\n\nThe team is maintained in area54, not here. Move the change there and "
             "redeploy, or pass --force to discard the local edits."
         )
+
+    _prune(target, [c.path for c in changes if c.kind == "superseded"])
 
     for data, rel in _file_contents():
         dst = target / rel
@@ -295,6 +381,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run or args.check:
         for change in sorted(pending, key=lambda c: (c.kind, c.path)):
             print(f"  {change.kind:15} {change.path}")
+        collision = marketplace_collision()
+        if collision:
+            print(f"::warning::{collision}")
         if not pending:
             print(f"{target.name} is up to date with area54 @ {source_version()}.")
             return 0
@@ -308,7 +397,10 @@ def main(argv: list[str] | None = None) -> int:
         f"The team arrives as the {plugin_reference()} plugin. Start a session in "
         f"{target.name} and run `claude plugin details area54` to confirm it loaded."
     )
-    print(f"Review the diff and commit it in {target.name}.")
+    collision = marketplace_collision()
+    if collision:
+        print(f"\n::warning::{collision}")
+    print(f"\nReview the diff and commit it in {target.name}.")
     return 0
 
 

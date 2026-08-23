@@ -253,3 +253,121 @@ def test_force_replaces_a_preexisting_file(tmp_path: Path) -> None:
 
     install(target, force=True)
     assert '"theirs"' not in (target / ".claude" / "settings.json").read_text(encoding="utf-8")
+
+
+# --- migrating a repo that has the old copied team ------------------------
+
+
+def make_old_target(tmp_path: Path) -> Path:
+    """A repo deployed by the copying installer, with its manifest."""
+    import hashlib
+
+    target = make_repo(tmp_path, "oldtarget")
+    copied = {
+        ".claude/agents/lead.md": "you are the lead\n",
+        ".claude/commands/review.md": "review it\n",
+        ".claude/hooks/record_event.py": "print('x')\n",
+        ".claude/tools/merge_gate.py": "print('gate')\n",
+    }
+    lines = ["# The Token Fruit engineering team, installed from area54 @ deadbee"]
+    for rel, body in copied.items():
+        path = target / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+        lines.append(f"{hashlib.sha256(body.encode()).hexdigest()[:16]} {rel}")
+    (target / VERSION_FILE).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    commit_all(target)
+    return target
+
+
+def test_an_upgrade_removes_the_team_it_used_to_copy(tmp_path: Path) -> None:
+    """Every already-deployed repo is in this state; migrating them is the point.
+
+    A stale `.claude/agents/` is not merely untidy — Claude Code discovers it by
+    convention, so eight frozen prompts keep loading beside the plugin's and the
+    repo runs two teams that can disagree.
+    """
+    target = make_old_target(tmp_path)
+    install(target)
+    for gone in (
+        ".claude/agents/lead.md",
+        ".claude/commands/review.md",
+        ".claude/hooks/record_event.py",
+        ".claude/tools/merge_gate.py",
+    ):
+        assert not (target / gone).exists(), gone
+
+
+def test_an_upgrade_leaves_no_empty_component_directory(tmp_path: Path) -> None:
+    """An empty `.claude/agents` is still a component directory."""
+    target = make_old_target(tmp_path)
+    install(target)
+    for gone in (".claude/agents", ".claude/commands", ".claude/hooks", ".claude/tools"):
+        assert not (target / gone).exists(), gone
+
+
+def test_the_upgrade_is_reported_rather_than_silent(tmp_path: Path) -> None:
+    target = make_old_target(tmp_path)
+    superseded_paths = [c.path for c in plan(target) if c.kind == "superseded"]
+    assert ".claude/agents/lead.md" in superseded_paths
+    assert len(superseded_paths) == 4
+
+
+def test_only_files_this_installer_wrote_are_removed(tmp_path: Path) -> None:
+    """Anything the manifest does not claim belongs to the target repo."""
+    target = make_old_target(tmp_path)
+    theirs = target / ".claude" / "their-own-notes.md"
+    theirs.write_text("ours, not yours\n", encoding="utf-8")
+    commit_all(target)
+
+    install(target)
+    assert theirs.read_text(encoding="utf-8") == "ours, not yours\n"
+
+
+def test_a_second_upgrade_is_a_no_op(tmp_path: Path) -> None:
+    target = make_old_target(tmp_path)
+    install(target)
+    commit_all(target)
+    assert install(target) == []
+
+
+# --- the marketplace name is a global key ---------------------------------
+
+
+def test_a_colliding_marketplace_name_is_reported(tmp_path: Path) -> None:
+    """Why the first live verification of this installer ran the wrong commit.
+
+    `extraKnownMarketplaces` is not per-project. area54 registers `tokenfruit`
+    as its own working copy; a target asking for the same name gets that copy
+    rather than GitHub, silently, because the first registration wins.
+    """
+    from tools.deploy import marketplace_collision
+
+    registry = tmp_path / "known_marketplaces.json"
+    registry.write_text(
+        json.dumps(
+            {"tokenfruit": {"source": {"source": "directory", "path": "/somewhere/area-54"}}}
+        ),
+        encoding="utf-8",
+    )
+    warning = marketplace_collision(registry)
+    assert warning is not None
+    assert "/somewhere/area-54" in warning
+    assert "first registration wins" in warning
+
+
+def test_a_matching_registration_is_not_reported(tmp_path: Path) -> None:
+    from tools.deploy import MARKETPLACE_SOURCE, marketplace_collision
+
+    registry = tmp_path / "known_marketplaces.json"
+    registry.write_text(json.dumps({"tokenfruit": {"source": MARKETPLACE_SOURCE}}), "utf-8")
+    assert marketplace_collision(registry) is None
+
+
+def test_an_unregistered_name_is_not_reported(tmp_path: Path) -> None:
+    from tools.deploy import marketplace_collision
+
+    registry = tmp_path / "known_marketplaces.json"
+    registry.write_text(json.dumps({"someone-else": {"source": {"source": "npm"}}}), "utf-8")
+    assert marketplace_collision(registry) is None
+    assert marketplace_collision(tmp_path / "absent.json") is None

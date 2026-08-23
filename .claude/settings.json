@@ -58,6 +58,7 @@
       "Bash(gh pr comment:*)",
       "Bash(gh pr edit:*)",
       "Bash(gh pr merge:*)",
+      "Bash(merge-gate:*)",
       "Bash(python -m tools.merge_gate:*)"
     ],
     "deny": [

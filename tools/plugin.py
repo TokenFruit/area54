@@ -47,6 +47,14 @@ COMPONENT_DIRS = {"agents": "*.md", "commands": "*.md"}
 #: something to bump.
 REQUIRED_FIELDS = ("name", "version", "description", "author")
 
+#: The CLI these measurements were taken against. They are properties of a
+#: version, not of the format, and the format is young — ADR-0001 says so. When
+#: this no longer matches `claude --version`, the failure message says to
+#: re-measure rather than leaving someone to argue with a rule whose reason
+#: expired two releases ago. Re-measure by declaring the field, installing into
+#: a scratch repo, and reading `claude plugin details`.
+MEASURED_AGAINST = "2.1.241"
+
 #: Manifest fields that validate but do nothing, with what to do instead.
 #: Each was measured, not assumed.
 INERT_FIELDS = {
@@ -112,7 +120,9 @@ def check_no_inert_fields(manifest: dict[str, Any]) -> list[str]:
     loaded at all.
     """
     return [
-        f"plugin.json: `{field}` has no effect — {why}."
+        f"plugin.json: `{field}` has no effect — {why}. Measured on CLI "
+        f"{MEASURED_AGAINST}; if the CLI has moved on, re-measure before deleting this "
+        f"rule, and re-measure before working around it."
         for field, why in INERT_FIELDS.items()
         if field in manifest
     ]
