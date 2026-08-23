@@ -110,8 +110,8 @@ The check does this and nothing more:
    and an unindented lazy continuation both belong to the item above, never
    between two items. A list ends at a blank line followed by a column-0
    non-item line. Require exactly one list per subsection.
-5. Each list needs five items or more. A failure names the list by its role, its
-   `###` line number, and the count it has.
+5. The first list needs six items or more, the second five. A failure names the
+   list by its role, its `###` line number, its floor, and the count it has.
 
 **Ordinal, not wording.** Naming which list is short (criterion 9) means telling
 them apart, and the only prose-free discriminator is position; a label like
@@ -131,9 +131,9 @@ lists, and criterion 4's translations, which live in the preamble.
 be wrong is loud — translations dropped inside a subsection make two lists there;
 a third subsection fails on the count. Nothing miscounts silently.
 
-The floor is five per list, matching criterion 1 exactly, even though criterion 2
-names six entries. A validator stricter than the criterion is a rule nobody
-agreed to. Standard library `re` only.
+The floors are six and five, matching criterion 1 exactly: each is its list's
+closed-set size (criteria 2 and 3), so the validator is exactly as strict as the
+criterion and a list with a category missing fails. Standard library `re` only.
 
 ### 4. One new fixture, two cases
 
@@ -226,7 +226,7 @@ list of `(heading_line, items)` tuples held only during a check.
 | `tools.constitution.validate(path: Path = TEAM_PATH) -> list[str]` | Failures, one string each. Raises `ConstitutionError` if the file is missing or has no `## Escalation`. |
 | `python tools/validate.py` | **Unchanged — no arguments.** Adds `validate_constitution()` to the sum at `tools/validate.py:44` and `ConstitutionError` to the except tuple at `:45`. |
 | `tools.agents.validate()` | Unchanged signature; two more per-agent checks. |
-| `team/TEAM.md` `## Escalation` | Preamble, then exactly two `###` subsections — escalate-immediately, then never-surface — one top-level Markdown list each, ≥5 items. |
+| `team/TEAM.md` `## Escalation` | Preamble, then exactly two `###` subsections — escalate-immediately, then never-surface — one top-level Markdown list each, ≥6 and ≥5 items. |
 | `python -m tools.deploy <target> --check` | Unchanged. Reports `.claude/TEAM.md` changed, because `team/TEAM.md` changed. |
 
 ## Dependencies
@@ -266,7 +266,7 @@ alternative is a rule that fails silently, and a loud failure carrying a line
 number is repairable in a minute.
 
 **The checks pass on a contract that says nothing useful.** Certain, by design —
-five bullets of nonsense pass criterion 1. That is what resolved question 4 buys:
+six bullets of nonsense pass criterion 1. That is what resolved question 4 buys:
 a check that cannot decay into a wording lint.
 
 **The eval cases assert regex proxies, not comprehension.** The patterns are

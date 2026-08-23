@@ -59,10 +59,13 @@ load-bearing rather than tidying: it removes a false statement.
 
 1. **Given** `team/TEAM.md`, **when** its `## Escalation` section is read,
    **then** it contains a Markdown list of what reaches the CPO immediately with
-   at least five entries, and a Markdown list of what must never be surfaced with
-   at least five entries. **And** — read by a human, not by a tool — the section
-   says that the two lists are complete, and that a condition on neither list is
-   the agent's own to resolve. No mechanical check may assert that wording; see
+   at least six entries, and a Markdown list of what must never be surfaced with
+   at least five entries. The floors are the two closed sets' sizes: six for
+   criterion 2, five for criterion 3. Six is not stricter than criterion 2 — a
+   five-entry floor would pass a list with a category missing, which is the one
+   thing this check exists to catch. **And** — read by a human, not by a tool —
+   the section says that the two lists are complete, and that a condition on
+   neither list is the agent's own to resolve. No mechanical check may assert that wording; see
    resolved question 4.
 2. **Given** that section, **when** its escalate-immediately list is read,
    **then** it covers these six categories and no others: reaching a CPO gate
