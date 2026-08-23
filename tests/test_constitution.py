@@ -178,6 +178,12 @@ def test_the_section_stops_at_the_next_heading() -> None:
     assert [heading for heading, _ in subsections(section)] == [3]
 
 
+def test_a_heading_that_merely_starts_with_the_word_is_not_the_section() -> None:
+    """`## Escalations` is a different section, and checking it checks nothing."""
+    with pytest.raises(ConstitutionError, match="no `## Escalation` section"):
+        escalation_section("## Escalations\n\n### One\n\n- a\n\n### Two\n\n- b\n")
+
+
 def test_a_heading_inside_a_fence_does_not_end_the_section(tmp_path: Path) -> None:
     """Documenting the required shape inside the section must not truncate it.
 

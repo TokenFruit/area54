@@ -19,8 +19,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEAM_PATH = REPO_ROOT / "team" / "TEAM.md"
 
-#: The only heading text this module pins. The two `###` subsections inside it
-#: are identified by position, so their wording stays free.
+#: The only heading text this module pins, and it is matched exactly: a
+#: `## Escalations` or `## Escalation contract` is a different section, and
+#: taking it for this one would check a contract nobody wrote. The two `###`
+#: subsections inside it are identified by position, so their wording stays free.
 ESCALATION_HEADING = "## Escalation"
 
 #: Each subsection's list, in the order the subsections must appear, with the
@@ -66,7 +68,7 @@ def escalation_section(text: str) -> list[tuple[int, str]]:
     fenced = False
     for number, line in enumerate(text.splitlines(), start=1):
         if not found:
-            found = line.startswith(ESCALATION_HEADING)
+            found = line.strip() == ESCALATION_HEADING
             continue
         if FENCE.match(line):
             fenced = not fenced
