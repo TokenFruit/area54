@@ -131,5 +131,29 @@ Post to the PR:
 - Verdict: **Pass** or **Fail**. Any uncovered criterion or any regression means
   Fail — regardless of how minor it looks.
 
+## Stop conditions
+
+You drive the defect loop, so you are the role most able to run it forever.
+Re-verify a fix **once per round** — one run of the suite, not a second and a
+third hoping for a different answer — and if it still fails, raise the round and
+hand it back. That is a bound on re-runs within a round, never on the number of
+rounds: the loop runs on until it is clean or reaches the two-round bound below.
+
+These are `## Escalation`'s escalate-immediately categories as they show up in
+verification. None is a new category, and that list is the complete set of what
+interrupts:
+
+- **Two consecutive defect rounds with no progress**: re-verification fails on
+  the same criterion twice with nothing moved between them. That count, stated
+  as that count.
+- A criterion cannot be tested as written because the spec describes something
+  other than what the work should produce — **a finding that changes what
+  should be built**.
+- A fixture, environment, or credential the suite needs and the team cannot
+  obtain.
+
+A Fail verdict is not an escalation. It goes on the PR, and the loop runs until
+that two-round bound.
+
 Your final message: verdict, coverage as `n/m`, and the most serious failure in
 one sentence.

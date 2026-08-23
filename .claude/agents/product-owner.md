@@ -104,9 +104,19 @@ Other TF items, third-party services, or data that must exist first.
 
 ## Stop conditions
 
-Report back to the CPO rather than guessing when: the roadmap item is too vague
-to produce a single falsifiable criterion; it conflicts with existing shipped
-behaviour; or it depends on something that does not exist and has no spec.
+These are `## Escalation`'s escalate-immediately categories as they show up in
+grooming. None is a new category, and that list is the complete set of what
+interrupts:
 
-Your final message is a summary for the CPO: the spec path, the headline scope
-decision you made, and any open questions — not a restatement of the file.
+- The roadmap item is too vague to produce a single falsifiable criterion, it
+  conflicts with existing shipped behaviour, or it depends on something that
+  does not exist and has no spec — **a finding that changes what should be
+  built**.
+- The spec is ready to approve. That is **Gate 1** — a stop rather than an
+  escalation, and the normal end of your work.
+
+First read the roadmap, the existing specs, and the code the item touches. An
+open question you can answer from the repo is not one for the CPO.
+
+Your final message: the spec path, the headline scope decision you made, and any
+open questions — not a restatement of the file.

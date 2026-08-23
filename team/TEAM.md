@@ -47,19 +47,24 @@ nowhere else:
   │             └───────────── until clean, or stuck twice ──┘
   │
   └─ PR opened, CI green ──────────────────────────→ ■ CPO GATE 2
-                                                     (approve, then /ship)
+                                                     (approve, then /ship —
+                                                      the gate merges)
 ```
 
 **Gate 1 — after the spec.** Is this the right thing to build? Open questions
 are the gate: the team never answers them for the CPO and never proceeds on an
 assumption.
 
-**Gate 2 — before merge.** Is this good enough to ship? Only the CPO merges.
+**Gate 2 — before merge.** Is this good enough to ship? The CPO approves the
+work and runs `/ship`; from there the **merge gate** decides, and a passing gate
+merges. Nobody waits for a second approval on the PR, and no agent merges
+because it judged itself ready. See `## The merge gate`.
 
 **Between the gates, the team does not ask.** Findings, defects, failing tests
 and contradictions between an ADR and a design are the team's work, not the
-CPO's. The single exception: two consecutive defect rounds with no progress
-means the team is stuck, and being stuck is worth interrupting for.
+CPO's. What does interrupt is exactly the escalate-immediately list in
+`## Escalation` — six conditions, and that list is the complete set. Two
+consecutive defect rounds with no progress is one of the six, not the only one.
 
 The individual commands — `/groom`, `/design`, `/build`, `/review`, `/ship` —
 still exist for running one stage on its own, or resuming a pipeline partway.
@@ -132,7 +137,7 @@ stall is what made this pipeline need a human at every seam.
 | Builders | the project's test, typecheck and lint commands; `git add/commit/push`; `gh pr create` | `gh pr merge`, force pushes, pushes to `main` |
 | Lead | read-only git and `gh pr diff`; the test commands, to reproduce a finding | **any command that modifies a tracked file.** It holds no edit tool; using the shell to get around that is the same violation |
 | Tester | the test commands; writes under `tests/` only | edits to implementation code — that is a DEFECT, not a fix |
-| DevOps | the full pipeline, tags, deploys | `gh pr merge` without explicit CPO approval on the PR |
+| DevOps | the full pipeline, tags, deploys | `gh pr merge` without a live authorisation from the merge gate |
 
 **Where this is enforced, honestly.** The `tools:` list in each agent
 definition is enforced by the harness — the Lead genuinely cannot call `Edit`.
@@ -167,8 +172,10 @@ and the shell guard permits `gh pr merge` only against a live one. So an agent
 cannot merge by deciding it is allowed to — only by having actually passed. One
 authorisation, one merge.
 
-**A refused gate goes to the CPO.** Not around, not again with different
-wording. That is the whole point of the gate being outside the agent.
+**The gate's result is the merge decision.** A pass merges — nothing further is
+required, and no separate approval on the PR is waited for. A refusal goes to
+the CPO: not around it, and not again with different wording. That is the whole
+point of the gate being outside the agent.
 
 **Verdicts must be posted to the PR.** On TF-002 the Tester passed, reported
 into a transcript, and the change merged carrying a code review and no evidence
@@ -270,10 +277,68 @@ not settle the argument by editing the test.
 
 ## Escalation
 
-If you cannot complete your task as specified — the spec is ambiguous,
-contradictory, or technically impossible — **stop and report to the CPO**. Do
-not improvise a resolution. Write what you found, what you'd need to proceed,
-and stop. Guessing at intent is the most expensive failure mode on this team.
+This contract governs **unprompted** escalation only — what an agent raises to
+the CPO of its own accord, mid-pipeline. Answering a question the CPO asked
+directly is never an escalation, and neither list below applies to it. Asked a
+question, answer it.
+
+**A gate is not an escalation.** A gate is a stop: the pipeline halts and waits
+for the CPO before continuing, and there are exactly two — Gate 1 after the
+spec, Gate 2 before merge. An escalation interrupts without halting at a gate.
+
+**Both lists below are complete**, not floors and not examples. A condition on
+neither list is yours to resolve, and you may not invent a seventh reason to
+interrupt: adding one is a change to this file, not a judgement call you make
+mid-run.
+
+**State the outcome and the decision.** A message to the CPO says what is now
+true and what he has to decide. It does not relay raw tool output, status
+lines, or the mechanics of how the work was done. Translate:
+
+| Do not write | Write |
+| --- | --- |
+| "DEFECT-3 is open on `tf-019-escalation`" | "the feature still does not do X" |
+| "the merge gate exited non-zero" | "this cannot ship yet, and here is what is missing" |
+| "CI is red on the lint job" | "the change is not ready" |
+| "the Lead raised two majors" | "the review found work still to do" |
+| "the spec has an open question" | "I need your decision on X before this can be built" |
+
+**That ban is scoped to CPO-facing messages.** Durable artifacts — PR comments,
+verdicts, specs, ADRs — still carry exact evidence, verbatim output included.
+The Tester's and the Builders' duty to paste real output onto the PR is
+unchanged, and so is everything `## The merge gate` requires.
+
+### Reaches the CPO immediately
+
+- **A CPO gate is reached.** Gate 1: the spec is ready to approve. Gate 2: the
+  PR is open and green — with the **full PR URL**.
+- **A finding that changes what should be built.** Not how — what. The spec
+  describes something other than what the work should produce.
+- **An impediment your role's own stop conditions did not clear.**
+  "Impediment", not "blocker": `blocker` is a Lead severity in this file and
+  means something else.
+- **Anything destructive or irreversible, including a refused merge gate.** A
+  refusal goes to the CPO — not around it, and not back through the gate with
+  different wording.
+- **A credential or an access the team cannot obtain.** No agent here can grant
+  itself one, so no amount of retrying produces it.
+- **Two consecutive defect rounds with no progress.** That count, stated as
+  that count — not "the team is stuck". Two rounds where re-verification fails
+  on the same criterion with nothing moved between them.
+
+### Never surfaced
+
+- **Retries and self-corrected failures.** A command that failed and then
+  worked is not news.
+- **Routine progress.** Stage started, stage finished, "I am now writing the
+  tests". The pipeline's shape is already known.
+- **Internal mechanics.** Branch names, hook states, gate labels, tool names,
+  defect identifiers, raw command output.
+- **Findings and defects inside an open defect loop** — they stay silent
+  *until* the loop reaches the two-consecutive-round bound above, at which
+  point the loop escalates as one item rather than each finding inside it.
+- **Out-of-scope ideas.** They go in the PR body's "Follow-ups" list for the
+  CPO to triage, never into a message that interrupts him.
 
 ## What agents must never do
 

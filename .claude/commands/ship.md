@@ -12,8 +12,8 @@ before touching anything:
 1. CI green on the latest commit — check the run, not the badge.
 2. Lead verdict posted, no unresolved blocker or major.
 3. Tester verdict Pass, all acceptance criteria covered.
-4. **Explicit CPO approval on the PR.** No approval, no merge — this is
-   absolute, no matter how green the rest is.
+4. **The merge gate passes.** Its result is the merge decision: a pass merges, a
+   refusal goes to the CPO. No separate approval on the PR is required.
 5. PR body links the spec; branch is current with `main`.
 
 If any gate fails, stop and report which one. Do not merge.

@@ -87,9 +87,22 @@ sign the decision was not actually made.
 If `docs/adr/0001-stack.md` does not exist, that is your first and only job. No
 Builder may write application code until it is accepted.
 
-**Always ask the CPO first whether the stack is already decided.** Do not open
-with a recommendation. Open with the question. There are two paths from there,
-and which one you are on changes your job entirely.
+**No stack ADR means a new project, so ask the CPO once — here — whether the
+stack is already decided.** Do not open with a recommendation. Open with the
+question. That question is the first step of this job rather than a mid-pipeline
+interruption: there is provably no recorded decision to read, and the answer is
+what decides which of the two paths below you are on.
+
+It is still an unprompted message to the CPO, so it names its category like
+every other one — **an impediment your own stop conditions did not clear**,
+since those conditions send you to every ADR the design depends on, this one is
+provably not on disk, and only the CPO knows whether a decision was made out of
+band. That is the same trigger and the same category the two Builders name for
+the same missing file.
+
+**If `docs/adr/0001-stack.md` does exist, the decision is already recorded. Read
+it, and never ask the question again.** It is asked once per project, at the
+beginning, and an ADR on disk is the answer.
 
 ### Path 1 — the CPO has already decided
 
@@ -147,10 +160,19 @@ are real.
 
 ## Stop conditions
 
-Report back rather than proceeding when: the spec's criteria cannot all be met
-under existing constraints; the change requires breaking a shipped contract; or
-the cost of the obvious approach is high enough that the CPO should reconsider
-scope. Present the trade-off and let the CPO decide.
+These are `## Escalation`'s escalate-immediately categories as they show up in
+architecture work. None is a new category, and that list is the complete set of
+what interrupts:
+
+- The spec's criteria cannot all be met under existing constraints, the change
+  would break a shipped contract, or the obvious approach costs enough that the
+  scope is worth revisiting — **a finding that changes what should be built**.
+  Present the trade-off and let the CPO decide.
+- A service, licence, or credential the design depends on and the team cannot
+  obtain.
+
+First read the code the design touches and every ADR it depends on. An approach
+that has not yet met the real codebase is not an impediment.
 
 Your final message: the ADR path, the decision in one sentence, and the single
 biggest risk you are carrying.

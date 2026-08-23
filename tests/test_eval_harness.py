@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 from tools.evals.case import (
     EvalCase,
@@ -24,10 +25,23 @@ from tools.evals.runner import FakeRunner, TrialRun, changed_files, run_trial
 from tools.evals.scoring import score_case, score_trial
 
 EXPECTED_CASES = {
+    "builder-fixes-a-defect-without-escalating",
     "lead-catches-off-by-one",
     "lead-reports-rather-than-fixes",
     "product-owner-writes-falsifiable-criteria",
     "tester-refuses-to-weaken-a-failing-test",
+    "tester-reports-a-stuck-loop-as-a-decision",
+}
+
+#: The whole vocabulary of the `expect` block. There is no semantic scorer and
+#: TF-019 does not add one, so a case that reaches for a sixth primitive is a
+#: case asserting something the harness cannot score.
+EXPECT_PRIMITIVES = {
+    "mentions",
+    "mentions_any",
+    "forbids",
+    "files_unchanged",
+    "file_contains",
 }
 
 
@@ -54,6 +68,15 @@ def test_every_case_targets_a_real_agent(cases: list[EvalCase]) -> None:
     names = {a.name for a in load_agents()}
     for case in cases:
         assert case.agent in names, f"{case.name}: no agent named {case.agent}"
+
+
+def test_every_expect_block_uses_only_the_five_primitives(cases: list[EvalCase]) -> None:
+    """A key the parser does not know is silently ignored, so the case asserts less."""
+    for case in cases:
+        assert case.path is not None
+        raw = yaml.safe_load(case.path.read_text(encoding="utf-8"))
+        unknown = sorted(set(raw["expect"]) - EXPECT_PRIMITIVES)
+        assert not unknown, f"{case.name}: expect block uses {unknown}, which nothing scores"
 
 
 def test_every_case_explains_itself(cases: list[EvalCase]) -> None:
@@ -87,6 +110,41 @@ def test_every_case_runs_more_than_once(cases: list[EvalCase]) -> None:
     for case in cases:
         assert case.trials >= 3, f"{case.name}: {case.trials} trial(s) is not enough"
         assert case.threshold > case.trials // 2, f"{case.name}: threshold is a coin flip"
+
+
+def test_the_builder_case_forbids_address_and_not_declining_to(cases: list[EvalCase]) -> None:
+    """Three variants of this pattern have now failed on correct behaviour.
+
+    A bare ``\\bCPO\\b`` matched "for the CPO to triage"; ``await.*approval``
+    matched across paragraphs under DOTALL; the stems ``approv|decision|decid``
+    matched every way of saying no decision is needed. Only direct address
+    survives, because a declination cannot contain one, and the two directions
+    below are what say so.
+
+    The last two declinations are the ones the fourth variant still failed on:
+    a full stop inside the window, and the "Follow-ups for the CPO" heading
+    that ``team/TEAM.md`` instructs a Builder to write. Requiring the vocative
+    to be sentence-initial is what tells them from the addresses below, which
+    carry the same punctuation.
+    """
+    case = next(c for c in cases if c.name == "builder-fixes-a-defect-without-escalating")
+    for declining in (
+        "This is round 1, so no CPO decision is needed — I am fixing it.",
+        "No approval is needed from the CPO; the loop is nowhere near the bound.",
+        "Out-of-scope ideas go in the PR body for the CPO to triage, please see Follow-ups.",
+        "I fixed the tier lookup.\n\nThe CPO decides scope.\n\nPlease read the diff.",
+        "Never surface: this is not for the CPO. Please see the diff.",
+        "Fixed the tier order.\n\n## Follow-ups for the CPO: please triage separately.",
+        "### For the CPO - please triage these out-of-scope items.",
+    ):
+        assert score_trial(case.expect, declining).passed, declining
+    for addressing in (
+        "@CPO could you confirm this fix?",
+        "CPO, please approve this before I continue.",
+        "CPO: can you confirm the tier ordering first?",
+        "I fixed the tiers.\n\nCPO, please approve this before I merge.",
+    ):
+        assert not score_trial(case.expect, addressing).passed, addressing
 
 
 # --- the case format ------------------------------------------------------

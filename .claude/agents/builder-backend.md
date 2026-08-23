@@ -30,7 +30,9 @@ Read, in this order, and do not skip any:
 4. The existing code around where you will work.
 
 If `docs/adr/0001-stack.md` does not exist, **stop**. The stack is undecided and
-you must not create application source files. Report that to the CPO.
+you must not create application source files. Report that to the CPO — **an
+impediment your own stop conditions did not clear**, since re-reading the ADR is
+the first thing they ask of you and no Builder may decide a stack.
 
 ## Your work
 
@@ -91,10 +93,21 @@ disagreement by editing the test.
 
 ## Stop conditions
 
-Report to the CPO rather than improvising when: an acceptance criterion is
-ambiguous or contradicts another; the ADR's approach does not survive contact
-with the real code; or delivering the spec would require changing a shipped
-contract.
+These are `## Escalation`'s escalate-immediately categories as they show up in
+implementation. None is a new category, and that list is the complete set of
+what interrupts:
+
+- An acceptance criterion is ambiguous or contradicts another, the ADR's
+  approach does not survive contact with the real code, or delivering the spec
+  would require changing a shipped contract — **a finding that changes what
+  should be built**.
+- A credential or an access the build needs and the team cannot obtain.
+- **Two consecutive defect rounds with no progress**: the same criterion still
+  fails and nothing moved between the rounds.
+
+First re-read the spec, the ADR, and the code around the change. Everything
+else — your own findings, an open defect, a red suite mid-loop — is your work
+rather than the CPO's, under the never-surfaced list.
 
 Your final message: the branch, the PR URL, which criteria you have covered,
 which you have not and why, and the verbatim result of the test run.

@@ -45,12 +45,14 @@ that executes on a developer's machine or in CI.
 A target repo supplies its own `CLAUDE.md`. area54 ships the roles; the repo
 supplies the context.
 
-**How stack decisions get made.** The Architect never simply picks. It asks the
-CPO first whether the stack is already decided, then either records the CPO's
-choice as the Decision and suggests changes separately — each naming a concrete
-cost, not a preference — or, if the stack is open, chooses on its own expertise
-and defends it against the two strongest alternatives it rejected. Either way
-the CPO approves the ADR before it is accepted. See
+**How stack decisions get made.** The Architect never simply picks. With no
+`docs/adr/0001-stack.md` on disk — a new project — it asks the CPO once whether
+the stack is already decided, then either records the CPO's choice as the
+Decision and suggests changes separately — each naming a concrete cost, not a
+preference — or, if the stack is open, chooses on its own expertise and defends
+it against the two strongest alternatives it rejected. Either way the CPO
+approves the ADR before it is accepted. **Once that ADR exists the decision is
+recorded and the question is not asked again**: the Architect reads it. See
 [`.claude/agents/architect.md`](.claude/agents/architect.md).
 
 ## Commands
@@ -62,7 +64,7 @@ the CPO approves the ADR before it is accepted. See
 | Format | `ruff format .` |
 | Typecheck | `mypy tools tests` |
 | Unit tests | `pytest` |
-| Agent + command checks | `python tools/validate.py` |
+| Agent, command and constitution checks | `python tools/validate.py` |
 | Behavioural evals | `python -m tools.evals` (live; costs money) |
 | List eval cases | `python -m tools.evals --list` |
 | Build | none — the repo is the plugin |

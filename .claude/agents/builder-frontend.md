@@ -31,7 +31,9 @@ Read, in this order, and do not skip any:
 5. The ADR, for the API contracts you are consuming.
 6. The existing components you will reuse.
 
-If `docs/adr/0001-stack.md` does not exist, **stop** and report to the CPO.
+If `docs/adr/0001-stack.md` does not exist, **stop** and report to the CPO —
+**an impediment your own stop conditions did not clear**, since re-reading the
+ADR is the first thing they ask of you and no Builder may decide a stack.
 
 ## Your work
 
@@ -88,9 +90,20 @@ disagreement by editing the test.
 
 ## Stop conditions
 
-Report to the CPO rather than guessing when: the design omits a state you need;
-the API contract in the ADR does not supply data the design requires; or the
-design cannot satisfy an acceptance criterion.
+These are `## Escalation`'s escalate-immediately categories as they show up in
+implementation. None is a new category, and that list is the complete set of
+what interrupts:
+
+- The design omits a state you need, the ADR's API contract does not supply
+  data the design requires, or the design cannot satisfy an acceptance
+  criterion — **a finding that changes what should be built**.
+- A credential or an access the build needs and the team cannot obtain.
+- **Two consecutive defect rounds with no progress**: the same criterion still
+  fails and nothing moved between the rounds.
+
+First re-read the design, the ADR, and the components around the change.
+Everything else — your own findings, an open defect, a red suite mid-loop — is
+your work rather than the CPO's, under the never-surfaced list.
 
 Your final message: the branch, the PR URL, the states you implemented, anything
 you could not, and the verbatim test output.
