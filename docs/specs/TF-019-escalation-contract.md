@@ -1,6 +1,6 @@
 # TF-019: The escalation contract
 
-**Status:** Draft
+**Status:** Approved — CPO, 2026-08-23
 **Roadmap item:** "TF-019 — The escalation contract. `TEAM.md` says what an agent does when it is blocked and nothing about what must never reach the CPO, so agents narrate mechanics where they should report an outcome and a decision"
 **Author:** Product Owner agent
 
@@ -59,6 +59,9 @@ rather than on a metric.
    requires a CPO-facing message to state the outcome and the decision, forbids
    relaying raw tool output or status lines into a CPO-facing message, and gives
    at least four concrete translations from an internal term to the CPO's noun.
+   **Then** it also states, in those words, that the contract governs
+   **unprompted** escalation only, and that answering a question the CPO asked
+   directly is never an escalation and is not bound by the two closed lists.
 5. **Given** that section, **when** it is checked against the `## How the work
    flows` section, **then** it names exactly two gates and adds no third, and its
    exceptions are the ones already stated there — stuck twice in the defect loop,
@@ -110,26 +113,42 @@ rather than on a metric.
 - **Any mechanical check on the wording of a message an agent sends at runtime.**
   Nothing in `tools/` sees a CPO-facing message, so this cannot be written.
 
-## Open questions
+## Resolved questions
 
-1. **Does this change the two-gate model?** It should not — criterion 5 asserts it
-   does not. Confirm that the only mid-pipeline interruptions remain: stuck twice
-   in the defect loop, and a refused merge gate. If you want a third, name it now.
-2. **Are target repos redeployed as part of this item, or separately?** This spec
-   assumes separately, and only requires that `--check` surfaces the staleness.
-   area52 runs on the old constitution until someone redeploys it.
-3. **Does the contract bind a direct single-agent invocation, or only `/deliver`?**
-   When you invoke `/groom` yourself, you are present in the session, and "never
-   surface routine progress" reads oddly. This spec assumes the contract governs
-   what is escalated *unprompted*, and that answering a question you asked
-   directly is never an escalation. Confirm.
-4. **Should `tools/validate.py` check `team/TEAM.md`'s structure at all?**
-   Criteria 8 and 9 say yes, and it is the only mechanically checkable part of
-   this item. The cost is that you can no longer freely restructure that section
-   without touching the validator.
-5. **Do the Lead and the Tester get stop-conditions sections?** They are the two
-   agents without one. Criterion 7 requires all eight to have one; say if you
-   would rather they stay as they are.
+All five are answered. Nothing blocks the build.
+
+1. **Does this change the two-gate model?** **No.** Ruled by the CPO: no third
+   gate. Criterion 5 stands as written — exactly two gates, and the only
+   mid-pipeline interruptions remain stuck twice in the defect loop and a refused
+   merge gate. An agent that wants to interrupt for anything else is wrong.
+2. **Are target repos redeployed as part of this item, or separately?**
+   **Separately.** Ruled by the CPO. Criterion 12 stands: `--check` must report
+   `team/TEAM.md` as stale, so the divergence is visible. area52 keeps running the
+   old constitution until a separate redeployment lands, and that redeployment
+   needs its own roadmap line or it will be forgotten.
+3. **Does the contract bind a direct single-agent invocation, or only
+   `/deliver`?** **It governs unprompted escalation only.** Answering a question
+   the CPO asked directly is never an escalation, and the two closed lists do not
+   apply to it. The `TEAM.md` wording must say **unprompted** explicitly — without
+   that word an agent will over-apply the never-surface list and go silent when it
+   was asked a direct question, which is a worse failure than the one this item
+   fixes. Criterion 4 now requires it.
+4. **Should `tools/validate.py` check `team/TEAM.md`'s structure?** **Yes.**
+   Every unenforced rule in this repo has decayed; a contract nothing checks would
+   be the fourth instance. The cost is accepted, and bounded by how criteria 8 and
+   9 are already written: the check asserts the **presence and minimum length of
+   the two closed lists**, never exact headings or wording, so the section can
+   still be restructured without touching the validator. A check that pins prose
+   is out of scope and must not be written.
+5. **Do the Lead and the Tester get stop-conditions sections?** **Yes**, per
+   criterion 7. They are the two roles most able to loop forever — the Lead can
+   review indefinitely, and the Tester drives the defect loop. Today the "stuck
+   twice" bound lives only in `TEAM.md`; giving both agents a stop-conditions
+   section puts the bound in the file of the agent that has to obey it.
+
+Answers 1 and 2 are the CPO's. Answers 3, 4 and 5 were delegated to the
+assistant by the CPO and adopted as written; any of the three can be reversed on
+a word, which would reopen the criteria they name.
 
 ## Dependencies
 
