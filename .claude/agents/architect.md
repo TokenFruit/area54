@@ -1,7 +1,7 @@
 ---
 name: architect
 description: Produces the technical architecture for an approved spec as an ADR — data model, API contracts, dependency and migration decisions, risks. Use after a spec is approved and before any code is written.
-tools: Read, Write, Glob, Grep, Bash, WebSearch, WebFetch
+tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, WebFetch
 model: claude-opus-5
 ---
 

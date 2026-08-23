@@ -15,10 +15,10 @@ Before delegating, verify all of the following and stop if any is missing:
 Then:
 
 1. Create branch `tf-<issue>-<slug>` from an up-to-date `main`.
-2. Decide the split. If the feature has both server and client work, run
-   **builder-backend** and **builder-frontend** in parallel — but only if they
-   touch disjoint files. If they would collide, run the backend first so the
-   frontend builds against a real interface.
+2. Decide the split. If the feature has both server and client work, run the
+   **builder-backend** subagent and the **builder-frontend** subagent in
+   parallel — but only if they touch disjoint files. If they would collide, run
+   the backend first so the frontend builds against a real interface.
 3. Each builder reads `CLAUDE.md`, the spec, the ADR, and the design before
    writing anything.
 4. When they return, run typecheck, lint, and the test suite yourself and paste

@@ -59,7 +59,7 @@ the CPO approves the ADR before it is accepted. See
 | Format | `ruff format .` |
 | Typecheck | `mypy tools tests` |
 | Unit tests | `pytest` |
-| Agent definitions | `python tools/validate_agents.py` |
+| Agent + command checks | `python tools/validate.py` |
 | Behavioural evals | `claude plugin eval` |
 | Build | none — the repo is the plugin |
 
@@ -77,7 +77,7 @@ aliases means the whole team can shift underneath you overnight, and your evals
 would re-baseline against the drift instead of catching it.
 
 So: `model: claude-opus-5`, not `model: opus`. Enforced by
-`tools/validate_agents.py`, which runs in CI and fails the build on any alias.
+`tools/validate.py`, which runs in CI and fails the build on any alias.
 
 Changing a pin is a **minor** version bump, never a patch, and requires a full
 eval run before merge. Adding a newly released model means adding it to
@@ -85,6 +85,36 @@ eval run before merge. Adding a newly released model means adding it to
 
 All eight agents currently run `claude-opus-5`. Whether every role needs the
 strongest model is a live cost question and a CPO decision, not a drive-by edit.
+
+## Tool scoping and delegation
+
+**Every agent holds exactly the tools its role needs — no more, no less.**
+`ROLE_POLICY` in `tools/agents.py` records the floor and the ceiling for each
+role, and CI fails on either violation. Three separations matter most:
+
+- The **Lead** holds no `Edit`, `Write`, or `NotebookEdit`. A reviewer that can
+  edit stops reporting findings and starts silently patching them.
+- The **Product Owner** and **Designer** hold no `Bash`. They define and design;
+  they do not run code.
+- Every **Builder** holds `Bash`. A builder that cannot run its own tests cannot
+  meet the Definition of Done.
+
+Adding a role means adding its policy in the same PR. An agent with no policy is
+a build failure, so a new role cannot slip through unchecked.
+
+**Commands delegate in one form: `**agent-name** subagent`.** CI resolves every
+such reference against the agents that exist, so a typo is a failed build rather
+than a command that runs, delegates to nobody, and returns a plausible answer
+produced by no one. Naming an agent any other way is also a failure — otherwise
+the check is bypassed by writing the reference differently.
+
+An agent no command invokes is dead code, and fails the build.
+
+**What this cannot check.** The Tester and the Builders all legitimately hold
+`Write` and `Edit`, so the rule that the Tester writes tests from the spec
+rather than patching the implementation is *not* mechanically enforceable. It
+lives in the Tester's prompt and in the Lead's review. Treat it accordingly: it
+is the weakest link in the review gate.
 
 ## Definition of Done
 

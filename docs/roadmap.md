@@ -19,11 +19,6 @@ acceptance criteria here, stop and run `/groom` instead.
 
 <!-- Committed, not started. -->
 
-- [ ] TF-004 — Extend the validators: every command must reference an agent
-      that exists, no agent may hold a tool its role does not need, and the
-      Tester must never be granted the Builder's edit scope. Frontmatter,
-      model pinning, and the Lead's read-only invariant already landed in
-      TF-002
 - [ ] TF-005 — Eval harness: fixture repos with planted defects. Does the Lead
       catch the bug? Does the PO write falsifiable criteria? Does the Tester
       refuse to weaken a failing test?
@@ -47,6 +42,8 @@ acceptance criteria here, stop and run `/groom` instead.
 - [x] **TF-001** — Decide the technical stack — ADR-0001, 2026-08-23
 - [x] **TF-002** — Pin exact model IDs in every agent, and guard the pin in
       CI — 2026-08-23
+- [x] **TF-004** — Tool scoping per role, and every command delegation resolved
+      against a real agent — 2026-08-23
 
 ---
 

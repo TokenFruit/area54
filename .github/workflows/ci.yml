@@ -4,8 +4,9 @@ name: CI
 # this proves it. Never weaken a check here to unblock a merge.
 #
 # Stack fixed by docs/adr/0001-stack.md: Python tooling over markdown agent
-# definitions. The "Agent definitions" step is the TF-002 guard — it fails the
-# build if any agent drifts back to a floating model alias.
+# definitions. The "Agent and command definitions" step enforces the team's
+# structural invariants — model pins, tool scoping, and that every command
+# delegates to an agent that exists.
 #
 # NOTE for the devops agent: third-party actions are still on moving tags and
 # should be pinned to commit SHAs. Installation should move to `uv sync
@@ -87,5 +88,5 @@ jobs:
       - name: Test
         run: pytest
 
-      - name: Agent definitions
-        run: python tools/validate_agents.py
+      - name: Agent and command definitions
+        run: python tools/validate.py

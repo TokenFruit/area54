@@ -17,6 +17,8 @@ from tools.agents import (
     Agent,
     AgentDefinitionError,
     check_model_is_pinned,
+    check_role_tool_policy,
+    check_tools_are_known,
     load_agents,
     parse_agent,
     validate,
@@ -123,3 +125,76 @@ def test_malformed_frontmatter_is_rejected(tmp_path: Path) -> None:
     bad.write_text("no frontmatter here\n", encoding="utf-8")
     with pytest.raises(AgentDefinitionError, match="no YAML frontmatter"):
         parse_agent(bad)
+
+
+# --- TF-004: tool scoping -------------------------------------------------
+
+
+def test_every_tool_name_is_real(agents: list[Agent]) -> None:
+    """A misspelt tool grants nothing and fails at runtime, silently."""
+    for agent in agents:
+        assert check_tools_are_known(agent) == []
+
+
+def test_every_role_holds_exactly_what_its_job_needs(agents: list[Agent]) -> None:
+    for agent in agents:
+        assert check_role_tool_policy(agent) == []
+
+
+def test_giving_the_lead_a_write_tool_is_caught(tmp_path: Path) -> None:
+    """The separation the review gate depends on."""
+    bad = tmp_path / "lead.md"
+    bad.write_text(
+        "---\nname: lead\ndescription: d\ntools: Read, Grep, Bash, Edit\n"
+        "model: claude-opus-5\n---\n\nbody\n",
+        encoding="utf-8",
+    )
+    failures = check_role_tool_policy(parse_agent(bad))
+    assert any("forbidden tool(s) ['Edit']" in f for f in failures)
+
+
+def test_giving_the_product_owner_a_shell_is_caught(tmp_path: Path) -> None:
+    bad = tmp_path / "product-owner.md"
+    bad.write_text(
+        "---\nname: product-owner\ndescription: d\ntools: Read, Write, Bash\n"
+        "model: claude-opus-5\n---\n\nbody\n",
+        encoding="utf-8",
+    )
+    failures = check_role_tool_policy(parse_agent(bad))
+    assert any("forbidden tool(s) ['Bash']" in f for f in failures)
+
+
+def test_taking_the_shell_from_a_builder_is_caught(tmp_path: Path) -> None:
+    """A Builder that cannot run its own tests cannot meet the Definition of Done."""
+    bad = tmp_path / "builder-backend.md"
+    bad.write_text(
+        "---\nname: builder-backend\ndescription: d\ntools: Read, Write, Edit\n"
+        "model: claude-opus-5\n---\n\nbody\n",
+        encoding="utf-8",
+    )
+    failures = check_role_tool_policy(parse_agent(bad))
+    assert any("missing required tool(s) ['Bash']" in f for f in failures)
+
+
+def test_a_misspelt_tool_is_caught(tmp_path: Path) -> None:
+    bad = tmp_path / "typo.md"
+    bad.write_text(
+        "---\nname: typo\ndescription: d\ntools: Read, Grepp\nmodel: claude-opus-5\n---\n\nbody\n",
+        encoding="utf-8",
+    )
+    failures = check_tools_are_known(parse_agent(bad))
+    assert len(failures) == 1
+    assert "Grepp" in failures[0]
+
+
+def test_a_new_role_without_a_policy_is_caught(tmp_path: Path) -> None:
+    """Adding an agent must not silently skip tool checking."""
+    bad = tmp_path / "newcomer.md"
+    bad.write_text(
+        "---\nname: newcomer\ndescription: d\ntools: Read, Bash\n"
+        "model: claude-opus-5\n---\n\nbody\n",
+        encoding="utf-8",
+    )
+    failures = check_role_tool_policy(parse_agent(bad))
+    assert len(failures) == 1
+    assert "no tool policy" in failures[0]
