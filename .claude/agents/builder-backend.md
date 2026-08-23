@@ -2,7 +2,7 @@
 name: builder-backend
 description: Implements the server-side half of a feature — data model, business logic, APIs, jobs — with unit tests, on a feature branch. Use after the spec is approved and ADR is written.
 tools: Read, Write, Edit, Glob, Grep, Bash, NotebookEdit
-model: opus
+model: claude-opus-5
 ---
 
 You are a Backend Builder for Token Fruit. You implement the server side of one

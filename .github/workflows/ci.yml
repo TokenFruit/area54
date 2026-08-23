@@ -3,10 +3,13 @@ name: CI
 # The team's only trustworthy quality signal. Agents report that tests pass;
 # this proves it. Never weaken a check here to unblock a merge.
 #
-# NOTE for the devops agent: the stack is undecided (see docs/adr/0001-stack.md).
-# This workflow auto-detects Node or Python and runs whatever exists. Once
-# ADR-0001 lands, replace the detection with the real commands from CLAUDE.md,
-# and pin every third-party action to a commit SHA.
+# Stack fixed by docs/adr/0001-stack.md: Python tooling over markdown agent
+# definitions. The "Agent definitions" step is the TF-002 guard — it fails the
+# build if any agent drifts back to a floating model alias.
+#
+# NOTE for the devops agent: third-party actions are still on moving tags and
+# should be pinned to commit SHAs. Installation should move to `uv sync
+# --frozen` once a uv.lock is committed.
 
 on:
   pull_request:
@@ -63,65 +66,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Detect stack
-        id: detect
-        run: |
-          if [ -f package.json ]; then echo "node=true" >> "$GITHUB_OUTPUT"; fi
-          if [ -f pyproject.toml ] || [ -f requirements.txt ]; then echo "python=true" >> "$GITHUB_OUTPUT"; fi
-          if [ ! -f package.json ] && [ ! -f pyproject.toml ] && [ ! -f requirements.txt ]; then
-            echo "::notice::No application code yet — stack undecided (ADR-0001)."
-          fi
-
-      - uses: actions/setup-node@v4
-        if: steps.detect.outputs.node == 'true'
-        with:
-          node-version: '22'
-
       - uses: actions/setup-python@v5
-        if: steps.detect.outputs.python == 'true'
         with:
           python-version: '3.12'
 
-      # --- Node ---
-      - name: Install (node)
-        if: steps.detect.outputs.node == 'true'
-        run: npm ci || npm install
-
-      - name: Typecheck (node)
-        if: steps.detect.outputs.node == 'true'
-        run: npm run --if-present typecheck
-
-      - name: Lint (node)
-        if: steps.detect.outputs.node == 'true'
-        run: npm run --if-present lint
-
-      - name: Test (node)
-        if: steps.detect.outputs.node == 'true'
-        run: npm run --if-present test
-
-      - name: Build (node)
-        if: steps.detect.outputs.node == 'true'
-        run: npm run --if-present build
-
-      # --- Python ---
-      - name: Install (python)
-        if: steps.detect.outputs.python == 'true'
+      - name: Install
         run: |
           python -m pip install --upgrade pip
-          if [ -f pyproject.toml ]; then pip install -e ".[dev]" || pip install -e .; fi
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install -e ".[dev]"
 
-      - name: Lint (python)
-        if: steps.detect.outputs.python == 'true'
-        run: |
-          if command -v ruff >/dev/null; then ruff check .; else echo "ruff not installed, skipping"; fi
+      - name: Lint
+        run: ruff check .
 
-      - name: Typecheck (python)
-        if: steps.detect.outputs.python == 'true'
-        run: |
-          if command -v mypy >/dev/null; then mypy .; else echo "mypy not installed, skipping"; fi
+      - name: Format
+        run: ruff format --check .
 
-      - name: Test (python)
-        if: steps.detect.outputs.python == 'true'
-        run: |
-          if command -v pytest >/dev/null; then pytest -q; else echo "pytest not installed, skipping"; fi
+      - name: Typecheck
+        run: mypy tools tests
+
+      - name: Test
+        run: pytest
+
+      - name: Agent definitions
+        run: python tools/validate_agents.py

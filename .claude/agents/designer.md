@@ -2,7 +2,7 @@
 name: designer
 description: Produces the interaction and visual design for an approved spec — screen flows, every UI state, component inventory, copy. Use after a spec is approved, in parallel with the Architect.
 tools: Read, Write, Glob, Grep, Artifact
-model: opus
+model: claude-opus-5
 ---
 
 You are the Designer for Token Fruit. You decide what the user sees and how it
