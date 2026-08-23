@@ -23,7 +23,7 @@ from tools.commands import (
     parse_command,
 )
 
-EXPECTED_COMMANDS = {"groom", "design", "build", "review", "ship", "status"}
+EXPECTED_COMMANDS = {"groom", "design", "build", "review", "ship", "status", "deliver"}
 
 
 @pytest.fixture(scope="module")

@@ -143,6 +143,7 @@ def validate(directory: Path = AGENTS_DIR) -> list[str]:
         failures += check_name_matches_filename(agent)
         failures += check_tools_are_known(agent)
         failures += check_role_tool_policy(agent)
+        failures += check_declares_its_place_in_the_sequence(agent)
     return failures
 
 
@@ -263,3 +264,46 @@ def check_role_tool_policy(agent: Agent) -> list[str]:
     if missing := sorted(policy.required - held):
         failures.append(f"{agent.path.name}: missing required tool(s) {missing}. {policy.reason}")
     return failures
+
+
+#: Who each role hands work to. ``devops`` is terminal.
+#:
+#: Encoded here so the sequence is checkable, not merely described. An agent
+#: that does not name its successor stops and waits for a human, which is the
+#: failure this table exists to prevent.
+SEQUENCE: dict[str, tuple[str, ...]] = {
+    "product-owner": ("architect", "designer"),
+    "architect": ("builder-backend", "builder-frontend"),
+    "designer": ("builder-frontend",),
+    "builder-backend": ("lead", "tester"),
+    "builder-frontend": ("lead", "tester"),
+    "lead": ("builder-backend", "builder-frontend"),
+    "tester": ("builder-backend", "builder-frontend"),
+    "devops": (),
+}
+
+SEQUENCE_HEADING = "## Where you sit in the sequence"
+
+
+def check_declares_its_place_in_the_sequence(agent: Agent) -> list[str]:
+    """Return failures where an agent does not know what comes after it."""
+    successors = SEQUENCE.get(agent.name)
+    if successors is None:
+        return [
+            f"{agent.path.name}: role '{agent.name}' is not in SEQUENCE. Add it, so the "
+            f"team knows where its work goes next."
+        ]
+    if SEQUENCE_HEADING not in agent.body:
+        return [f"{agent.path.name}: no '{SEQUENCE_HEADING}' section."]
+    # Same whitespace tolerance as the command delegation check: a reference
+    # that wraps across a line is still a reference.
+    missing = [
+        s for s in successors if not re.search(rf"\*\*{re.escape(s)}\*\*\s+subagent", agent.body)
+    ]
+    if missing:
+        return [
+            f"{agent.path.name}: does not name its successor(s) {missing} in the "
+            f"delegation convention. An agent that cannot name who comes next stops "
+            f"and waits for a human."
+        ]
+    return []

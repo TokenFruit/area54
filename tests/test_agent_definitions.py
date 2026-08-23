@@ -14,8 +14,10 @@ import pytest
 from tools.agents import (
     FLOATING_ALIASES,
     PINNED_MODELS,
+    SEQUENCE,
     Agent,
     AgentDefinitionError,
+    check_declares_its_place_in_the_sequence,
     check_model_is_pinned,
     check_role_tool_policy,
     check_tools_are_known,
@@ -198,3 +200,41 @@ def test_a_new_role_without_a_policy_is_caught(tmp_path: Path) -> None:
     failures = check_role_tool_policy(parse_agent(bad))
     assert len(failures) == 1
     assert "no tool policy" in failures[0]
+
+
+# --- the sequence ---------------------------------------------------------
+
+
+def test_every_agent_knows_what_comes_after_it(agents: list[Agent]) -> None:
+    """An agent that cannot name its successor stops and waits for a human."""
+    for agent in agents:
+        assert check_declares_its_place_in_the_sequence(agent) == []
+
+
+def test_the_sequence_covers_exactly_the_roles_that_exist(agents: list[Agent]) -> None:
+    assert set(SEQUENCE) == {a.name for a in agents}
+
+
+def test_every_successor_is_a_real_agent(agents: list[Agent]) -> None:
+    names = {a.name for a in agents}
+    for role, successors in SEQUENCE.items():
+        for successor in successors:
+            assert successor in names, f"{role} hands off to '{successor}', which does not exist"
+
+
+def test_devops_is_the_only_terminal_role() -> None:
+    """Anything else with no successor is a dead end nobody notices."""
+    terminal = [r for r, s in SEQUENCE.items() if not s]
+    assert terminal == ["devops"]
+
+
+def test_an_agent_missing_its_sequence_section_is_caught(tmp_path: Path) -> None:
+    bad = tmp_path / "lead.md"
+    bad.write_text(
+        "---\nname: lead\ndescription: d\ntools: Read, Grep, Bash\n"
+        "model: claude-opus-5\n---\n\nno sequence here\n",
+        encoding="utf-8",
+    )
+    failures = check_declares_its_place_in_the_sequence(parse_agent(bad))
+    assert len(failures) == 1
+    assert "no '## Where you sit in the sequence' section" in failures[0]
