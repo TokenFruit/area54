@@ -43,6 +43,10 @@ SPEC_STATUS = re.compile(r"^\*\*Status:\*\*\s*([A-Za-z]+)", re.MULTILINE)
 #: An ADR is claimed by this line and nowhere else — the anchor `BRANCH_TF` is for a PR.
 ADR_IMPLEMENTS = re.compile(r"^\*\*Implements:\*\*(.*)$", re.MULTILINE)
 
+#: The roadmap section a dispatchable item sits in. An item the CPO has moved
+#: out of it is reported and never started: that is what moving it out means.
+ACTIVE_SECTION = "Now"
+
 #: Which Builder owns a fix. The split is a judgement about the diff that this
 #: cannot make, so it names the backend — the default `/build` uses — and leaves
 #: the swap to whoever reads the line.
@@ -62,8 +66,9 @@ class Item:
     #: The PR body states `No spec: <reason>`, the waiver the merge gate accepts.
     spec_waived: bool = False
     has_adr: bool = False
-    #: The roadmap's `Done` section ticks this item off. Outranks every other signal.
-    done: bool = False
+    #: The roadmap section this item sits under, or None if the roadmap has no
+    #: line for it. `Done` outranks every other signal; only `Now` is dispatched.
+    section: str | None = None
     branch: str | None = None
     pr: dict[str, object] = field(default_factory=dict)
 
@@ -110,12 +115,29 @@ def owning_item(pr: dict[str, object]) -> str | None:
     return _number(match.group(1)) if match else None
 
 
-def roadmap_done(root: Path = REPO_ROOT) -> set[str]:
-    """Every TF number the roadmap's `Done` section ticks off. See `in_flight`."""
+def roadmap_sections(root: Path = REPO_ROOT) -> dict[str, str]:
+    """Every TF number the roadmap lists, and the section heading it sits under.
+
+    The sections carry meaning and the tool reads all of them, not just `Done`:
+    `Now` is what the team is working on, `Next` is committed but not started,
+    `Later` is not committed. Only `Now` is ever dispatched — TF-020 sits in
+    `Next` annotated "Paused at design, deliberately", and `next --run` sent an
+    Architect at it. A `Done` tick retires the item; see `in_flight`.
+    """
     path = root / "docs" / "roadmap.md"
-    section = path.read_text(encoding="utf-8").partition("\n## Done")[2] if path.exists() else ""
-    ticked = [ln for ln in section.partition("\n## ")[0].splitlines() if ln.startswith("- [x]")]
-    return {_number(match.group(0)) for ln in ticked if (match := TF.search(ln))}
+    sections: dict[str, str] = {}
+    section = ""
+    for line in (path.read_text(encoding="utf-8") if path.exists() else "").splitlines():
+        if line.startswith("## "):
+            section = line[3:].strip()
+        elif line.startswith(("- [ ]", "- [x]")) and (match := TF.search(line)):
+            # The tick is what retires an item, so an unticked line under `Done`
+            # is a line half-written rather than finished work: it stays active.
+            ticked = line.startswith("- [x]")
+            sections[_number(match.group(0))] = (
+                section if ticked or section != "Done" else ACTIVE_SECTION
+            )
+    return sections
 
 
 def adr_items(root: Path = REPO_ROOT) -> set[str]:
@@ -176,15 +198,19 @@ def fetch(repo: str, root: Path = REPO_ROOT) -> list[Item]:
         else:
             loose.append(pr)
 
-    done = roadmap_done(root)
-    keys = sorted(set(specs) | set(branches) | set(prs), key=int)
+    # An item in `Now` is on the board before anything else exists for it — that
+    # is how `Needs spec` is reached before the code rather than after it, and
+    # TF-003 sat in `Now` invisible to `status` and to `next`.
+    sections = roadmap_sections(root)
+    active = {key for key, section in sections.items() if section == ACTIVE_SECTION}
+    keys = sorted(set(specs) | set(branches) | set(prs) | active, key=int)
     return [
         Item(
             tf=f"TF-{int(key):03d}",
             spec_status=specs.get(key),
             spec_waived=bool(NO_SPEC_WAIVER.search(str(prs.get(key, {}).get("body") or ""))),
             has_adr=key in adrs,
-            done=key in done,
+            section=sections.get(key),
             branch=branches.get(key),
             pr=prs.get(key, {}),
         )
@@ -265,7 +291,8 @@ def latest_commit(pr: dict[str, object]) -> str:
         return UNDATEABLE
     head = str(pr.get("headRefOid") or "")
     matched = [c for c in commits if str(c.get("oid") or "") == head] if head else []
-    return max((str(c.get("committedDate") or "") for c in (matched or commits)), default=UNDATEABLE)
+    dated = (str(c.get("committedDate") or "") for c in (matched or commits))
+    return max(dated, default=UNDATEABLE)
 
 
 def latest_verdict(pr: dict[str, object], role: str) -> dict[str, str] | None:
@@ -334,7 +361,7 @@ def stalls(item: Item) -> list[str]:
         return []
     found = []
     if role := rejecting_verdict(pr):
-        found.append(f"the {role} refused this head, and no commit since — nobody picked the fix up")
+        found.append(f"the {role} refused this head, and no commit since — nobody picked it up")
     green = ci_state(pr) == "green"
     missing = missing_verdicts(pr)
     if green and not pr.get("isDraft") and missing:
@@ -352,6 +379,12 @@ def next_action(item: Item) -> Action:
     commands' reading: the draft PR opens first, and `/review` runs against it.
     """
     pr, ci = item.pr, ci_state(item.pr)
+    if item.section not in (None, ACTIVE_SECTION):
+        return Action(
+            "Not started",
+            f"the CPO has this in `{item.section}`, not `{ACTIVE_SECTION}`",
+            "wait",
+        )
     if item.spec_status is None and not item.spec_waived:
         return Action(
             "Needs spec",
@@ -416,13 +449,22 @@ def next_action(item: Item) -> Action:
 def in_flight(items: list[Item]) -> list[Item]:
     """Drop what is finished. The roadmap decides first; everything else after.
 
-    A `- [x]` line is the CPO saying the work shipped, and it outranks a branch,
-    a PR and a spec alike — TF-019 shipped in #23 and its two undeleted branches
-    went on reporting it as Building, which under `--run` dispatches a Builder at
-    finished work. A branch is evidence a branch was never deleted, nothing more.
+    A `- [x]` line under `Done` is the CPO saying the work shipped, and it
+    outranks a branch, a PR and a spec alike — TF-019 shipped in #23 and its two
+    undeleted branches went on reporting it as Building, which under `--run`
+    dispatches a Builder at finished work. A branch is evidence a branch was
+    never deleted, nothing more.
     """
-    unfinished = [i for i in items if not i.done]
-    return [i for i in unfinished if i.pr or (i.spec_status or "").lower() not in {"", "shipped"}]
+    unfinished = [i for i in items if i.section != "Done"]
+    return [
+        i
+        for i in unfinished
+        # A line in `Now` with nothing else to show for it is the one state that
+        # needs the Product Owner, so it is work; a spec-less branch is residue.
+        if i.pr
+        or i.section == ACTIVE_SECTION
+        or (i.spec_status or "").lower() not in {"", "shipped"}
+    ]
 
 
 def dispatch(action: Action, item: Item, repo: str) -> list[str]:
@@ -485,7 +527,7 @@ def main(argv: list[str] | None = None) -> int:
 
     for item in items:
         action = next_action(item)
-        runner = "the CPO" if action.kind == "cpo" else action.agent or action.kind
+        runner = {"cpo": "the CPO", "wait": "nobody"}.get(action.kind) or action.agent or "nobody"
         print(f"{item.tf}: {action.blocked_on} → {runner}")
         if not args.run or action.kind not in {"agent", "ready"}:
             continue

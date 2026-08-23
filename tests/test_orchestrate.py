@@ -32,7 +32,7 @@ from tools.orchestrate import (
     next_action,
     owning_item,
     rejecting_verdict,
-    roadmap_done,
+    roadmap_sections,
     stalls,
 )
 
@@ -41,6 +41,15 @@ ROADMAP = """# Roadmap
 ## Now
 
 - [ ] TF-021 — The orchestrator. Nothing checks that a handoff happened
+- [ ] TF-003 — Package the team as a Claude Code plugin
+
+## Next
+
+- [ ] TF-020 — Learn from the transcripts. **Paused at design**, deliberately
+
+## Later
+
+- [ ] Per-repo team profiles — not every product needs all seven roles
 
 ## Done
 
@@ -415,6 +424,11 @@ def test_a_stall_on_a_pr_that_owns_no_item_is_still_named() -> None:
 # --- fetch: the half that reads the world ------------------------------------
 
 
+def roadmap(tmp_path: Path, text: str = ROADMAP) -> None:
+    (tmp_path / "docs").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "docs" / "roadmap.md").write_text(text, encoding="utf-8")
+
+
 def fetched(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -450,6 +464,48 @@ def test_a_second_pr_on_one_item_keeps_a_row_of_its_own(
     )
     owned = {i.tf: i.pr.get("number") for i in items}
     assert owned == {"TF-021": 31, "tf-021-orchestrator": 29}
+
+
+def test_an_item_in_now_is_on_the_board_before_anything_exists_for_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """TF-003 sat in `Now` with no spec, branch or PR, and was on no board at all."""
+    roadmap(tmp_path)
+    board = {i.tf: next_action(i) for i in in_flight(fetched(monkeypatch, tmp_path))}
+    assert board["TF-003"].agent == "product-owner"
+    assert board["TF-003"].stage == "Needs spec"
+
+
+def test_next_and_later_are_not_seeded_onto_the_board(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`Next` is committed, `Later` is not, and neither is work the team has picked up."""
+    roadmap(tmp_path)
+    assert [i.tf for i in fetched(monkeypatch, tmp_path)] == ["TF-003", "TF-021"]
+
+
+def test_work_already_open_in_next_is_reported_but_never_dispatched(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """TF-020 is paused at design, and `next --run` sent an Architect at it."""
+    roadmap(tmp_path)
+    paused = fetched(
+        monkeypatch, tmp_path, [{"number": 26, "headRefName": "tf-020-design", "body": ""}]
+    )
+    tf020 = next(i for i in paused if i.tf == "TF-020")
+    assert tf020.section == "Next"
+    action = next_action(tf020)
+    assert action.stage == "Not started"
+    assert action.kind == "wait"
+    assert action.agent is None
+
+
+def test_a_paused_item_still_has_its_stalls_named() -> None:
+    """The filter must not lose the true positive it exists to find."""
+    paused = item(section="Next", pr=pr(comments=[]))
+    assert next_action(paused).kind == "wait"
+    assert stalls(paused) == ["CI green and open for review, but no Lead or Tester verdict"]
+    assert in_flight([paused]) == [paused]
 
 
 def test_one_pr_on_an_item_is_the_item_s_pr(
@@ -507,25 +563,35 @@ def test_a_shipped_spec_with_an_open_pr_stays_in_flight() -> None:
     assert in_flight([shipped]) == [shipped]
 
 
-def test_the_roadmap_done_section_is_read_and_the_open_ones_are_not(tmp_path: Path) -> None:
-    """A `- [x]` line is finished. A `- [ ]` line is exactly the opposite."""
-    (tmp_path / "docs").mkdir()
-    (tmp_path / "docs" / "roadmap.md").write_text(ROADMAP, encoding="utf-8")
-    assert roadmap_done(tmp_path) == {"19", "9"}
+def test_every_roadmap_section_is_read_and_named(tmp_path: Path) -> None:
+    """A `- [x]` line under `Done` is finished. A `- [ ]` line is exactly the opposite."""
+    roadmap(tmp_path)
+    assert roadmap_sections(tmp_path) == {
+        "21": "Now",
+        "3": "Now",
+        "20": "Next",
+        "19": "Done",
+        "9": "Done",
+    }
 
 
-def test_a_roadmap_with_no_done_section_ticks_nothing_off(tmp_path: Path) -> None:
-    assert roadmap_done(tmp_path) == set()
+def test_a_roadmap_that_is_not_there_places_nothing(tmp_path: Path) -> None:
+    assert roadmap_sections(tmp_path) == {}
+
+
+def test_an_unticked_line_under_done_is_half_written_not_finished(tmp_path: Path) -> None:
+    roadmap(tmp_path, "# Roadmap\n\n## Done\n\n- [ ] TF-021 — not actually shipped\n")
+    assert roadmap_sections(tmp_path) == {"21": "Now"}
 
 
 def test_a_done_item_is_not_in_flight_whatever_a_leftover_branch_says() -> None:
     """The TF-019 defect: two undeleted branches reported shipped work as Building."""
-    shipped = item(spec_status="Approved", branch="tf-019-design", done=True, pr={})
+    shipped = item(spec_status="Approved", branch="tf-019-design", section="Done", pr={})
     assert in_flight([shipped]) == []
 
 
 def test_done_outranks_an_open_pr_too() -> None:
-    assert in_flight([item(done=True)]) == []
+    assert in_flight([item(section="Done")]) == []
 
 
 def test_an_item_the_roadmap_has_not_ticked_off_stays_in_flight() -> None:
