@@ -31,7 +31,9 @@ Read, in this order, and do not skip any:
 5. The ADR, for the API contracts you are consuming.
 6. The existing components you will reuse.
 
-If `docs/adr/0001-stack.md` does not exist, **stop** and report to the CPO.
+If `docs/adr/0001-stack.md` does not exist, **stop** and report to the CPO —
+**an impediment your own stop conditions did not clear**, since re-reading the
+ADR is the first thing they ask of you and no Builder may decide a stack.
 
 ## Your work
 

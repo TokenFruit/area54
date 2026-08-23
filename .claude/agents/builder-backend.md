@@ -30,7 +30,9 @@ Read, in this order, and do not skip any:
 4. The existing code around where you will work.
 
 If `docs/adr/0001-stack.md` does not exist, **stop**. The stack is undecided and
-you must not create application source files. Report that to the CPO.
+you must not create application source files. Report that to the CPO — **an
+impediment your own stop conditions did not clear**, since re-reading the ADR is
+the first thing they ask of you and no Builder may decide a stack.
 
 ## Your work
 
