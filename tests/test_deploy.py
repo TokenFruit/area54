@@ -145,3 +145,41 @@ def test_force_overwrites_a_local_edit(tmp_path: Path) -> None:
 def test_check_reports_a_stale_target(tmp_path: Path) -> None:
     target = make_repo(tmp_path)
     assert [c.kind for c in plan(target)].count("new") > 0
+
+
+# --- permissions travel with the team -------------------------------------
+
+
+def test_settings_are_installed(tmp_path: Path) -> None:
+    """Without permissions the team arrives unable to run the project's tests."""
+    target = make_repo(tmp_path)
+    install(target)
+    settings = target / ".claude" / "settings.json"
+    assert settings.is_file()
+    import json
+
+    loaded = json.loads(settings.read_text(encoding="utf-8"))
+    assert "Bash(gh pr merge:*)" in loaded["permissions"]["deny"]
+
+
+def test_a_preexisting_target_file_is_not_clobbered(tmp_path: Path) -> None:
+    """A file the target already had is not ours to replace."""
+    target = make_repo(tmp_path)
+    (target / ".claude").mkdir()
+    (target / ".claude" / "settings.json").write_text('{"theirs": true}\n', encoding="utf-8")
+    commit_all(target)
+
+    assert any(c.kind == "conflict" for c in plan(target))
+    with pytest.raises(DeployError, match="did not write them"):
+        install(target)
+    assert '"theirs"' in (target / ".claude" / "settings.json").read_text(encoding="utf-8")
+
+
+def test_force_replaces_a_preexisting_file(tmp_path: Path) -> None:
+    target = make_repo(tmp_path)
+    (target / ".claude").mkdir()
+    (target / ".claude" / "settings.json").write_text('{"theirs": true}\n', encoding="utf-8")
+    commit_all(target)
+
+    install(target, force=True)
+    assert '"theirs"' not in (target / ".claude" / "settings.json").read_text(encoding="utf-8")
