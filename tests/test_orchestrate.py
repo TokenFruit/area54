@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from tools.merge_gate import check_ci_green
 from tools.orchestrate import (
     UNDATEABLE,
     Action,
@@ -243,6 +244,20 @@ def test_everything_satisfied_reaches_gate_two() -> None:
 )
 def test_ci_states(rollup: object, expected: str) -> None:
     assert ci_state({"statusCheckRollup": rollup}) == expected
+
+
+@pytest.mark.parametrize(
+    "conclusion",
+    ["SUCCESS", "NEUTRAL", "SKIPPED", "CANCELLED", "TIMED_OUT", "FAILURE", "QUEUED", ""],
+)
+def test_green_here_is_green_at_the_merge_gate(conclusion: str) -> None:
+    """Both directions of one property: the gate is the authority on what green is.
+
+    `SKIPPED` was green here and refused there, so a skipped required check was
+    marked ready, reviewed twice, and reported ready to ship before the gate saw it.
+    """
+    data = {"statusCheckRollup": [{"name": "Typecheck / Lint / Test", "conclusion": conclusion}]}
+    assert (ci_state(data) == "green") is check_ci_green(data).passed
 
 
 def test_no_checks_reported_is_not_green() -> None:

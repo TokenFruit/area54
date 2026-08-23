@@ -186,7 +186,11 @@ def fetch_comments(pr: int, repo: str) -> list[dict[str, str]]:
 def ci_state(pr: dict[str, object]) -> str:
     """One of `green`, `failing`, `pending`, `none`.
 
-    No checks reported is `none`, never `green` — the merge gate's own refusal.
+    Green is exactly the merge gate's `{SUCCESS, NEUTRAL}`, and the gate is the
+    authority: anything it refuses must not be reported ready here. No checks
+    reported is `none`, and a `SKIPPED` required check — a path filter, a
+    conditional job — is not green either. Calling it green spent a Lead and a
+    Tester round on a PR the gate then refused.
     """
     rollup = pr.get("statusCheckRollup")
     if not isinstance(rollup, list) or not rollup:
@@ -198,7 +202,7 @@ def ci_state(pr: dict[str, object]) -> str:
     ]
     if any(s in {"", "PENDING", "IN_PROGRESS", "QUEUED", "WAITING"} for s in states):
         return "pending"
-    if all(s in {"SUCCESS", "NEUTRAL", "SKIPPED"} for s in states):
+    if all(s in {"SUCCESS", "NEUTRAL"} for s in states):
         return "green"
     return "failing"
 
