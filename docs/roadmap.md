@@ -28,9 +28,6 @@ worth distributing.
 <!-- What the team is working on or picking up next. Keep this short —
      three or four items. A long "Now" is a "Next" in disguise. -->
 
-- [ ] TF-021 — **The orchestrator.** The sequence is published and executed by
-      nobody: a human runs each step and six were skipped in one day. GitHub
-      already emits every event the pipeline needs — build the runner
 - [ ] TF-003 — Package the team as a Claude Code plugin, so a prompt fix reaches
       every product repo by version bump instead of six copy-pastes
 
@@ -44,6 +41,12 @@ worth distributing.
 - [ ] TF-016 — Evals for the five roles they do not cover. `designer` and
       `devops` have each executed exactly once, and nothing would catch either
       of them degrading
+- [ ] TF-022 — Every handoff is a cold start. Each agent run re-reads the repo
+      from scratch, so a six-round review re-reads the same files six times.
+      `claude --resume` and `--agents` already exist; we never used them
+- [ ] TF-023 — The merge gate matches a verdict anywhere in a comment. A Lead
+      refusal with 0 blockers that quotes an approve string passes, and so does
+      a Tester Fail that quotes the Pass form first. Demonstrated, not theorised
 - [ ] TF-017 — The repo does not check itself. Branch protection turns on CI job
       names that no test pins, over actions still on moving tags. **And the
       inverse now applies too — 4,342 lines of tooling guard 1,620 lines of
@@ -70,6 +73,9 @@ worth distributing.
 
 <!-- Shipped. Keep the TF number and the date. -->
 
+- [x] **TF-021** — The orchestrator: derives the pipeline's state from GitHub
+      and the roadmap, names what is stalled, and dispatches the next step. It
+      caught a stalled review on its first run — 2026-08-24
 - [x] **TF-019** — The escalation contract: two closed lists in TEAM.md, all
       eight agents stating stop conditions as instances of them, and a
       structural check that reads shape without pinning prose — 2026-08-23
