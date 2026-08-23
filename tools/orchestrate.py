@@ -39,6 +39,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 TF = re.compile(r"\bTF-(\d+)\b", re.IGNORECASE)
 BRANCH_TF = re.compile(r"^(?:origin/)?tf-(\d+)-", re.IGNORECASE)
 SPEC_STATUS = re.compile(r"^\*\*Status:\*\*\s*([A-Za-z]+)", re.MULTILINE)
+#: The line the Architect's ADR template opens with (`.claude/agents/architect.md:40`).
+#: An ADR is claimed by this line and nowhere else — the anchor `BRANCH_TF` is for a PR.
+ADR_IMPLEMENTS = re.compile(r"^\*\*Implements:\*\*(.*)$", re.MULTILINE)
 
 #: Which Builder owns a fix. The split is a judgement about the diff that this
 #: cannot make, so it names the backend — the default `/build` uses — and leaves
@@ -115,6 +118,23 @@ def roadmap_done(root: Path = REPO_ROOT) -> set[str]:
     return {_number(match.group(0)) for ln in ticked if (match := TF.search(ln))}
 
 
+def adr_items(root: Path = REPO_ROOT) -> set[str]:
+    """Every TF number an ADR states it implements, read from that line alone.
+
+    A TF number anywhere in the prose is a mention — "this supersedes the
+    approach proposed for TF-020" — and claiming an ADR by mention is what
+    commit 0bd582a removed from PR ownership. It costs more here than there: an
+    item wrongly credited with an ADR skips the Architect entirely and is built
+    without one, silently, rather than erroring.
+    """
+    lines = (
+        line
+        for path in (root / "docs" / "adr").glob("*.md")
+        for line in ADR_IMPLEMENTS.findall(path.read_text(encoding="utf-8"))
+    )
+    return {_number(match.group(0)) for line in lines for match in TF.finditer(line)}
+
+
 def fetch(repo: str, root: Path = REPO_ROOT) -> list[Item]:
     """Read every item's state from disk and from GitHub.
 
@@ -127,8 +147,7 @@ def fetch(repo: str, root: Path = REPO_ROOT) -> list[Item]:
         match = SPEC_STATUS.search(text)
         specs[_number(path.stem)] = match.group(1) if match else None
 
-    adr = (root / "docs" / "adr").glob("*.md")
-    adrs = {_number(m.group(0)) for p in adr for m in TF.finditer(p.read_text(encoding="utf-8"))}
+    adrs = adr_items(root)
 
     branches: dict[str, str] = {}
     listed = subprocess.run(  # noqa: S603

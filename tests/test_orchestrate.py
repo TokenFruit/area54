@@ -18,6 +18,7 @@ from tools.orchestrate import (
     Action,
     Item,
     OrchestratorError,
+    adr_items,
     ci_state,
     dispatch,
     in_flight,
@@ -405,6 +406,41 @@ def test_a_stall_on_a_pr_that_owns_no_item_is_still_named() -> None:
     )
     assert in_flight([chore]) == [chore]
     assert stalls(chore) == ["CI green and open for review, but no Lead or Tester verdict"]
+
+
+# --- which ADR belongs to which item -----------------------------------------
+
+
+def _adr(tmp_path: Path, name: str, text: str) -> Path:
+    (tmp_path / "docs" / "adr").mkdir(parents=True, exist_ok=True)
+    path = tmp_path / "docs" / "adr" / name
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_an_adr_is_claimed_by_the_line_that_states_what_it_implements(tmp_path: Path) -> None:
+    _adr(tmp_path, "0002-escalation.md", "# ADR-0002\n\n**Implements:** TF-019 — the contract\n")
+    assert adr_items(tmp_path) == {"19"}
+
+
+def test_an_adr_that_merely_mentions_an_item_does_not_claim_it(tmp_path: Path) -> None:
+    """One cross-reference sentence would otherwise delete the Architect's stage."""
+    _adr(
+        tmp_path,
+        "0002-escalation.md",
+        "# ADR-0002\n\n**Implements:** TF-019\n\n## Alternatives\n\nThis supersedes the "
+        "transcript approach proposed for TF-020.\n",
+    )
+    assert adr_items(tmp_path) == {"19"}
+
+
+def test_one_adr_may_state_several_items(tmp_path: Path) -> None:
+    _adr(tmp_path, "0003-two.md", "**Implements:** TF-016 and TF-017\n")
+    assert adr_items(tmp_path) == {"16", "17"}
+
+
+def test_no_adr_directory_claims_nothing(tmp_path: Path) -> None:
+    assert adr_items(tmp_path) == set()
 
 
 # --- what is in flight ------------------------------------------------------
