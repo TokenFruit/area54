@@ -29,15 +29,18 @@ rather than on a metric.
 
 ## Gates and escalations are different things
 
-The spec's first review found criteria 2 and 5 mandating and forbidding the same
-thing, because one word was doing two jobs. A **gate** is a stop: the pipeline
-halts and waits for the CPO before continuing, and there are exactly two. An
-**escalation** is a report that interrupts without halting at a gate, and
-criterion 2's list is the complete set of them. `team/TEAM.md:59-62` calls two
-stuck defect rounds "**the single exception**", which is now simply wrong —
-the CPO has confirmed all five original categories interrupt (resolved question
-6), so the stuck loop is one entry among six, not the only one. Criterion 16 is
-therefore load-bearing rather than tidying: it removes a false statement.
+The first review found criteria 2 and 5 mandating and forbidding the same thing:
+one word doing two jobs. A **gate** is a stop: the pipeline halts and waits for
+the CPO before continuing, and there are exactly two. An **escalation** is a
+report that interrupts without halting at a gate, and criterion 2's six
+categories are the complete set of them — closed, not a floor. An agent may not
+escalate a seventh: that is a constitution change. Criteria 2 and 3 bind the
+Builder's prose, which may word a category more fully but may not add or drop
+one. ADR-0002's reading, adopted here. `team/TEAM.md:59-62` calls two
+stuck defect rounds "**the single exception**", which is now simply wrong — the
+CPO has confirmed all six categories interrupt (resolved question 6), so the
+stuck loop is one entry among six, not the only one. Criterion 16 is therefore
+load-bearing rather than tidying: it removes a false statement.
 
 ## User stories
 
@@ -62,26 +65,26 @@ therefore load-bearing rather than tidying: it removes a false statement.
    the agent's own to resolve. No mechanical check may assert that wording; see
    resolved question 4.
 2. **Given** that section, **when** its escalate-immediately list is read,
-   **then** it covers at minimum: reaching a CPO gate (with the full PR URL at
-   Gate 2); a finding that changes what should be built; an impediment that the
-   role's own stop conditions did not clear; anything destructive or irreversible,
-   including a refused merge gate; a credential or access the team cannot
-   obtain; and **two consecutive defect rounds with no progress**, stated with
-   that count and not as a general "the team is stuck". "Impediment", not
-   "blocker" — `blocker` is a Lead severity in this repo (`team/TEAM.md:159`,
-   `:185`) and must not be overloaded here.
+   **then** it covers these six categories and no others: reaching a CPO gate
+   (with the full PR URL at Gate 2); a finding that changes what should be built;
+   an impediment that the role's own stop conditions did not clear; anything
+   destructive or irreversible, including a refused merge gate; a credential or
+   access the team cannot obtain; and **two consecutive defect rounds with no
+   progress**, stated with that count and not as a general "the team is stuck".
+   "Impediment", not "blocker" — `blocker` is a Lead severity in this repo
+   (`team/TEAM.md:159`, `:185`) and must not be overloaded here.
    **The stuck-loop entry carries a numeric bound the constitution states
    nowhere else in prose** — only at `team/TEAM.md:61`, which criterion 16
    rewrites, and in the flow diagram at `:47` ("until clean, or stuck twice").
    It must appear in this list with its count intact, or criterion 16 deletes
    the loop's only stated end.
 3. **Given** that section, **when** its never-surface list is read, **then** it
-   covers at minimum: retries and self-corrected failures; routine progress;
-   internal mechanics; findings and defects inside an open defect loop; and
-   out-of-scope ideas, which go to the PR body's Follow-ups list. **And** the
-   defect-loop entry states its own limit in the same sentence: findings inside
-   an open loop stay silent *until* the loop hits criterion 2's two-round bound,
-   at which point the loop itself escalates.
+   covers these five categories and no others: retries and self-corrected
+   failures; routine progress; internal mechanics; findings and defects inside an
+   open defect loop; and out-of-scope ideas, which go to the PR body's Follow-ups
+   list. **And** the defect-loop entry states its own limit in the same sentence:
+   findings inside an open loop stay silent *until* the loop hits criterion 2's
+   two-round bound, at which point the loop itself escalates.
 4. **Given** that section, **when** its reporting rule is read, **then** it
    requires a CPO-facing message to state the outcome and the decision, forbids
    relaying raw tool output or status lines into a CPO-facing message, and gives
@@ -196,15 +199,15 @@ were never removed. `devops.md:17` still says "you run only after the CPO has
 approved the PR. No amount of green changes that", `ship.md:15-16` still calls
 explicit CPO approval "absolute", and `team/TEAM.md:135` still forbids DevOps
 `gh pr merge` "without explicit CPO approval on the PR" — even though the merge
-gate's own table in the next section lists five checks with approval among none of
+gate's own table in the next section lists five checks, approval among none of
 them. **Three files, four sites, and `TEAM.md` and `devops.md` each contradict
 themselves.** So devops waits for the CPO on a PR the gate would have merged.
 
-That is an escalation defect, which is why it lands here rather than in its own
-item: it interrupts the CPO for a decision the gate already makes. It is the same
-failure this spec exists to fix, expressed in configuration instead of in prose.
-Criterion 16 belongs with them for the same reason — a "single exception" that is
-not the only exception sends an agent to the CPO for a ruling the contract makes.
+That is an escalation defect — it interrupts the CPO for a decision the gate
+already makes — which is why it lands here rather than in its own item: the same
+failure this spec exists to fix, expressed in configuration instead of prose.
+Criterion 16 belongs with them because a "single exception" that is not the only
+exception sends an agent to the CPO for a ruling the contract already makes.
 
 ## Out of scope
 
@@ -256,13 +259,16 @@ not the only exception sends an agent to the CPO for a ruling the contract makes
    section, so this is one new section each, in two files.
 
 6. **Is criterion 2's list the complete set of mid-pipeline interruptions, given
-   that it widens resolved question 1?** **Yes — all five escalate-immediately
-   categories are confirmed.** Ruled by the CPO, 2026-08-23, in review round 2:
-   "a finding that changes what should be built" and "a credential the team
-   cannot obtain" **do** interrupt mid-pipeline. Criteria 2, 5 and 16 are
-   settled, not provisional. The consequence is that `team/TEAM.md:61`'s "the
-   single exception" is factually wrong — there are six escalating conditions,
-   not one — which is why criterion 16 is required rather than cosmetic.
+   that it widens resolved question 1?** **Yes — all six escalate-immediately
+   categories are confirmed**, by the CPO on 2026-08-23. His round-2 ruling
+   settled that "a finding that changes what should be built" and "a credential
+   the team cannot obtain" **do** interrupt mid-pipeline; criterion 2 carried
+   five entries then, and round 3 added "two consecutive defect rounds" to close
+   a Lead blocker without updating this answer. Six is a count correction, not a
+   fresh authorisation — question 1's ruling already named the stuck loop.
+   Criteria 2, 5 and 16 are settled. So `team/TEAM.md:61`'s "the single
+   exception" is factually wrong — six escalating conditions, not one — which is
+   why criterion 16 is required rather than cosmetic.
 
 Answers 1, 2 and 6 are the CPO's. Answers 3, 4 and 5 were delegated to the
 assistant by the CPO and adopted as written; any of the three can be reversed on
