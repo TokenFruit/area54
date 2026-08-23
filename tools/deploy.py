@@ -32,6 +32,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PAYLOAD: tuple[tuple[str, str], ...] = (
     (".claude/agents", ".claude/agents"),
     (".claude/commands", ".claude/commands"),
+    # Without this the team arrives unable to run the project's own tests, and
+    # an honest agent stops and says it could not verify its work. Half of the
+    # pipeline's autonomy lives in this file.
+    (".claude/settings.json", ".claude/settings.json"),
     ("team/TEAM.md", ".claude/TEAM.md"),
     (".github/pull_request_template.md", ".github/pull_request_template.md"),
 )
@@ -137,7 +141,11 @@ def plan(target: Path) -> list[Change]:
             changes.append(Change(rel, "new"))
         elif filecmp.cmp(src, dst, shallow=False):
             changes.append(Change(rel, "unchanged"))
-        elif rel in manifest and manifest[rel] != _digest(dst):
+        elif rel not in manifest:
+            # Present, different, and not ours: the target had its own before we
+            # ever ran. Overwriting it discards work nobody asked us to touch.
+            changes.append(Change(rel, "conflict"))
+        elif manifest[rel] != _digest(dst):
             changes.append(Change(rel, "locally-edited"))
         else:
             changes.append(Change(rel, "update"))
@@ -148,6 +156,15 @@ def install(target: Path, force: bool = False) -> list[Change]:
     """Install the team into *target*. Returns what changed."""
     ensure_target_is_safe(target)
     changes = plan(target)
+
+    conflicts = [c for c in changes if c.kind == "conflict"]
+    if conflicts and not force:
+        raise DeployError(
+            "the target already has these files, and this installer did not write them:\n  "
+            + "\n  ".join(c.path for c in conflicts)
+            + "\n\nThey belong to the target repo. Merge what you need by hand, then "
+            "re-run — or pass --force to replace them, which discards their contents."
+        )
 
     edited = [c for c in changes if c.kind == "locally-edited"]
     if edited and not force:
