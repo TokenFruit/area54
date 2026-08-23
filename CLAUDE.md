@@ -67,9 +67,13 @@ the CPO approves the ADR before it is accepted. See
 | List eval cases | `python -m tools.evals --list` |
 | Build | none — the repo is the plugin |
 
-The eval harness is tested, but **no live eval run has ever happened**: the
-`claude` CLI is not installed on the maintainer's machine, so the runner's
-invocation is unverified. See `evals/README.md`.
+The eval harness is tested and its CLI invocation has been executed for real,
+but **no trial has yet completed**: the CLI's OAuth session is expired, so live
+trials error before reaching the model. Errored trials are reported as
+inconclusive, never as behavioural failures. See `evals/README.md`.
+
+`claude plugin eval` — the CLI's own, better runner — exists but is in early
+access and not enabled on this account. Migrate to it when access arrives.
 
 ## Model pinning
 

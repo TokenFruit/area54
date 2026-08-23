@@ -20,7 +20,7 @@ from tools.evals.case import (
     parse_case,
 )
 from tools.evals.report import render, render_github_errors
-from tools.evals.runner import FakeRunner, changed_files, run_trial
+from tools.evals.runner import FakeRunner, TrialRun, changed_files, run_trial
 from tools.evals.scoring import score_case, score_trial
 
 EXPECTED_CASES = {
@@ -196,8 +196,8 @@ def test_a_trial_runs_against_a_copy_not_the_fixture(cases: list[EvalCase]) -> N
     case = next(c for c in cases if c.fixture == "off-by-one")
     original = (case.fixture_dir / "cart.py").read_text(encoding="utf-8")
 
-    def vandalise(_case: EvalCase, _n: int) -> tuple[str, frozenset[str]]:
-        return "done", frozenset()
+    def vandalise(_case: EvalCase, _n: int) -> TrialRun:
+        return TrialRun(output="done", changed_files=frozenset())
 
     runner = FakeRunner(vandalise)
     run_trial(case, runner)
@@ -237,3 +237,50 @@ def test_github_errors_are_emitted_only_for_failures() -> None:
     assert render_github_errors([passing]) == ""
     failing = score_case(case, [score_trial(case.expect, "-") for _ in range(3)])
     assert "::error::" in render_github_errors([failing])
+
+
+# --- errored runs are not behavioural failures ----------------------------
+
+
+def test_a_nonzero_exit_marks_the_trial_errored_not_failed() -> None:
+    """An expired login must not read as an agent regression."""
+    outcome = score_trial(
+        Expectation(mentions=("threshold",)),
+        "Failed to authenticate: OAuth session expired",
+        exit_code=1,
+    )
+    assert outcome.errored
+    assert not outcome.passed
+    assert "the run failed (exit 1)" in outcome.reasons[0]
+
+
+def test_errored_trials_do_not_count_toward_the_score() -> None:
+    case = make_case(trials=5, threshold=3)
+    outcomes = [
+        score_trial(case.expect, "x"),
+        score_trial(case.expect, "x"),
+        score_trial(case.expect, "boom", exit_code=1),
+        score_trial(case.expect, "boom", exit_code=1),
+        score_trial(case.expect, "boom", exit_code=1),
+    ]
+    result = score_case(case, outcomes)
+    assert result.errors == 3
+    assert result.scored == 2
+    assert result.inconclusive, "2 scored trials cannot settle a case needing 3"
+    assert not result.passed
+
+
+def test_an_all_errored_case_is_inconclusive_not_failed() -> None:
+    case = make_case(trials=1, threshold=1)
+    result = score_case(case, [score_trial(case.expect, "boom", exit_code=1)])
+    assert result.inconclusive
+    assert "INCONCLUSIVE" in render_github_errors([result])
+
+
+def test_the_threshold_scales_when_fewer_trials_run() -> None:
+    """A 1-trial smoke run must not report "0/1 (need 4)", which is unreachable."""
+    case = make_case(trials=5, threshold=4)
+    result = score_case(case, [score_trial(case.expect, "x")])
+    assert result.required == 1
+    assert result.passed
+    assert result.summary == "1/1 (need 1)"

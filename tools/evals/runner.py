@@ -13,17 +13,37 @@ import shutil
 import subprocess
 import tempfile
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from tools.agents import load_agents
 from tools.evals.case import EvalCase
+
+
+@dataclass(frozen=True)
+class TrialRun:
+    """What one invocation produced, before it is scored.
+
+    ``exit_code`` is the difference between "the agent ran and behaved badly"
+    and "the run never happened". Conflating those two is how an expired login
+    gets read as a behavioural regression.
+    """
+
+    output: str
+    changed_files: frozenset[str]
+    exit_code: int = 0
+
+    @property
+    def errored(self) -> bool:
+        return self.exit_code != 0
 
 
 class Runner(Protocol):
     """Runs one trial of one case, and reports what the agent said and touched."""
 
-    def run(self, case: EvalCase, workdir: Path) -> tuple[str, frozenset[str]]:
-        """Return the agent's output, and the fixture-relative files it changed."""
+    def run(self, case: EvalCase, workdir: Path) -> TrialRun:
+        """Return the agent's output, the files it changed, and its exit code."""
         ...
 
 
@@ -48,27 +68,30 @@ def changed_files(original: Path, working: Path) -> frozenset[str]:
 class FakeRunner:
     """A runner that replays scripted results. Used to test the harness itself."""
 
-    def __init__(self, script: Callable[[EvalCase, int], tuple[str, frozenset[str]]]) -> None:
+    def __init__(self, script: Callable[[EvalCase, int], TrialRun]) -> None:
         self._script = script
         self._calls = 0
 
-    def run(self, case: EvalCase, workdir: Path) -> tuple[str, frozenset[str]]:
+    def run(self, case: EvalCase, workdir: Path) -> TrialRun:
         result = self._script(case, self._calls)
         self._calls += 1
         return result
 
 
 class ClaudeCliRunner:
-    """Runs a trial by shelling out to the ``claude`` CLI in headless mode.
+    """Runs a trial by invoking the ``claude`` CLI in headless mode.
 
-    .. warning::
+    The agent under test is applied with ``--append-system-prompt`` and its own
+    tool grants, rather than by asking a parent session to delegate to it. Both
+    exercise the prompt; this one has no delegation step to fail for reasons
+    unrelated to what the case is asking about, and costs one model run instead
+    of two.
 
-       **Unverified.** The ``claude`` CLI is not installed on the machine where
-       this was written, so the invocation below has never been executed. Treat
-       the flags as a starting point, not a contract: confirm them against
-       ``claude --help`` before trusting a green eval run, and fix them here if
-       they are wrong. Everything else in this package is tested and does not
-       depend on this class being right.
+    Tool grants come from the agent's own frontmatter, so the run is bound by
+    the same scoping as production. That matters for the Lead: it holds no
+    ``Edit`` or ``Write``, but it does hold ``Bash``, so ``files_unchanged``
+    still tests something real — whether it reaches for ``sed`` when told to
+    fix the bug it just found.
     """
 
     def __init__(self, executable: str = "claude", timeout_seconds: int = 600) -> None:
@@ -79,25 +102,52 @@ class ClaudeCliRunner:
         """Whether the CLI can be found at all."""
         return shutil.which(self.executable) is not None
 
-    def run(self, case: EvalCase, workdir: Path) -> tuple[str, frozenset[str]]:
+    def build_command(self, case: EvalCase) -> list[str]:
+        """Return the argv for one trial. Separated out so it can be tested."""
+        agent = next(a for a in load_agents() if a.name == case.agent)
+        return [
+            self.executable,
+            "-p",
+            case.prompt,
+            "--append-system-prompt",
+            agent.body.strip(),
+            "--allowed-tools",
+            *agent.tools,
+            "--model",
+            agent.model,
+            "--permission-mode",
+            "acceptEdits",
+        ]
+
+    def run(self, case: EvalCase, workdir: Path) -> TrialRun:
         if not self.is_available():
             raise RuntimeError(
                 f"'{self.executable}' is not on PATH. Live eval runs need the Claude Code CLI; "
-                f"install it, or run with the fake runner to exercise the harness only."
+                f"install it with: npm install -g @anthropic-ai/claude-code"
             )
-        prompt = f"Use the {case.agent} subagent for this task.\n\n{case.prompt}"
-        completed = subprocess.run(  # noqa: S603
-            [self.executable, "-p", prompt],
-            cwd=workdir,
-            capture_output=True,
-            text=True,
-            timeout=self.timeout_seconds,
-            check=False,
+        try:
+            completed = subprocess.run(  # noqa: S603
+                self.build_command(case),
+                cwd=workdir,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_seconds,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return TrialRun(
+                output=f"[timed out after {self.timeout_seconds}s]",
+                changed_files=frozenset(),
+                exit_code=124,
+            )
+        return TrialRun(
+            output=completed.stdout + completed.stderr,
+            changed_files=frozenset(),
+            exit_code=completed.returncode,
         )
-        return completed.stdout + completed.stderr, frozenset()
 
 
-def run_trial(case: EvalCase, runner: Runner) -> tuple[str, frozenset[str]]:
+def run_trial(case: EvalCase, runner: Runner) -> TrialRun:
     """Copy the fixture somewhere disposable, run one trial, report what changed.
 
     The agent works on a copy so that a misbehaving agent cannot corrupt the
@@ -106,6 +156,6 @@ def run_trial(case: EvalCase, runner: Runner) -> tuple[str, frozenset[str]]:
     with tempfile.TemporaryDirectory(prefix=f"eval-{case.name}-") as tmp:
         workdir = Path(tmp) / case.fixture
         shutil.copytree(case.fixture_dir, workdir)
-        output, reported = runner.run(case, workdir)
-        touched = reported | changed_files(case.fixture_dir, workdir)
-        return output, touched
+        run = runner.run(case, workdir)
+        touched = run.changed_files | changed_files(case.fixture_dir, workdir)
+        return TrialRun(output=run.output, changed_files=touched, exit_code=run.exit_code)

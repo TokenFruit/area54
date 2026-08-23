@@ -19,9 +19,14 @@ acceptance criteria here, stop and run `/groom` instead.
 
 <!-- Committed, not started. -->
 
-- [ ] TF-007 — Run the evals for real. Needs the Claude Code CLI installed and
-      credentials available; the harness has never executed a live trial, so
-      the cases are a statement of intent, not evidence
+- [ ] TF-007 — Get one eval trial to complete. The CLI is installed and the
+      invocation is verified end to end, but its OAuth session is expired so
+      every trial errors before reaching the model. **Blocked on `claude
+      login`.** Until a trial completes, the cases are a statement of intent,
+      not evidence
+- [ ] TF-008 — Migrate to `claude plugin eval` when early access arrives. It
+      has an ablation arm that measures whether the team actually helps versus
+      no plugin at all — something this harness cannot do
 - [ ] TF-006 — Deploy to the first target repo. **Blocked: the CPO names the
       target.** Not `area53` — area54 is independent of Gempli. Prefer a repo
       that is real, active, and already has a test suite, so the team's output
