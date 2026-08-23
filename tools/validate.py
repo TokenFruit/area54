@@ -18,6 +18,8 @@ from tools.commands import (
     check_references_resolve,
     load_commands,
 )
+from tools.settings import SettingsError
+from tools.settings import validate as validate_settings
 
 
 def validate_commands() -> list[str]:
@@ -39,8 +41,8 @@ def main() -> int:
     try:
         agents = load_agents()
         commands = load_commands()
-        failures = validate_agents() + validate_commands()
-    except AgentDefinitionError as exc:
+        failures = validate_agents() + validate_commands() + validate_settings()
+    except (AgentDefinitionError, SettingsError) as exc:
         print(f"::error::{exc}")
         return 1
 
@@ -50,7 +52,7 @@ def main() -> int:
         print(f"\n{len(failures)} problem(s) found.")
         return 1
 
-    print(f"{len(agents)} agents and {len(commands)} commands valid.")
+    print(f"{len(agents)} agents, {len(commands)} commands, and settings valid.")
     for agent in agents:
         print(f"  {agent.name:18} {agent.model:18} {', '.join(agent.tools)}")
     print()

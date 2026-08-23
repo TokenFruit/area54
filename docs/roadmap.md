@@ -19,21 +19,20 @@ acceptance criteria here, stop and run `/groom` instead.
 
 <!-- Committed, not started. -->
 
-- [ ] TF-012 — Redeploy the team to area52 once TF-011 lands, so it gets
-      `/deliver`, the published sequence, and the shell permissions
+- [ ] TF-016 — Evals for the five untested roles. `designer`,
+      `builder-backend` and `devops` have never executed once, and `/ship` has
+      never run — the role closest to production is the least proven
+- [ ] TF-017 — Size discipline. A 481-line spec and a 707-line ADR for one
+      `<head>` feature both got through; nothing constrains output length
 
-- [ ] TF-009 — Finish the first real feature end to end in area52. Spec, ADR
-      and code are done and green; three review findings are open and the
-      defect loop has not been run yet
+
+
+
 - [ ] TF-010 — Close area52's two Definition-of-Done gaps: ESLint is
       unconfigured (`next lint` is deprecated and prompts interactively), and
       `npm run build` needs DATABASE_URL and the NextAuth secrets
 
-- [ ] TF-007 — Get one eval trial to complete. The CLI is installed and the
-      invocation is verified end to end, but its OAuth session is expired so
-      every trial errors before reaching the model. **Blocked on `claude
-      login`.** Until a trial completes, the cases are a statement of intent,
-      not evidence
+
 - [ ] TF-008 — Migrate to `claude plugin eval` when early access arrives. It
       has an ablation arm that measures whether the team actually helps versus
       no plugin at all — something this harness cannot do
@@ -57,6 +56,14 @@ acceptance criteria here, stop and run `/groom` instead.
       CI — 2026-08-23
 - [x] **TF-004** — Tool scoping per role, and every command delegation resolved
       against a real agent — 2026-08-23
+- [x] **TF-014** — Validate the configuration that can hurt you: permission
+      rules, hook existence, and payload completeness — 2026-08-23
+- [x] **TF-015** — Telemetry: a hook records pipeline events, so "what did that
+      feature cost" is answerable from data — 2026-08-23
+- [x] **TF-009** — First real feature end to end in area52: TF-001 shipped
+      through spec, ADR, build, review and two defect rounds — 2026-08-23
+- [x] **TF-007** — Evals run live; four cases pass — 2026-08-23
+- [x] **TF-012** — Redeployed to area52 with `/deliver` and the guard — 2026-08-23
 - [x] **TF-011** — Publish the sequence and make the team run it: `/deliver`
       chains the pipeline to two CPO gates, agents name their successors, and
       shell permissions stop them stalling — 2026-08-23
