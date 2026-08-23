@@ -10,6 +10,7 @@ runs on.
 from __future__ import annotations
 
 import re
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -94,7 +95,52 @@ def load_agents(directory: Path = AGENTS_DIR) -> list[Agent]:
     return [parse_agent(p) for p in paths]
 
 
-def cli_invocation(agent: Agent, prompt: str, executable: str = "claude") -> list[str]:
+#: Namespace for derived session ids. Fixed forever: the same (repo, item,
+#: role) must derive the same uuid on every machine and every run, because that
+#: identity is what makes a session findable without anything writing it down.
+SESSION_NAMESPACE = uuid.UUID("6f1c4b02-9d3e-5a7f-8c21-0b4d6e8a1f39")
+
+#: Where the CLI keeps a session, and how it names the directory: the absolute
+#: physical cwd with every character outside ``[A-Za-z0-9]`` replaced by a dash.
+SESSION_STORE = Path.home() / ".claude" / "projects"
+
+MUNGED = re.compile(r"[^A-Za-z0-9]")
+
+
+def session_id(repo: str, item: str, role: str) -> str:
+    """Derive the session uuid for one *role* working *item* in *repo*.
+
+    Derived rather than stored, on the TF-021 principle: a uuid5 over stable
+    inputs is the same uuid every time, so there is no file to write, to read
+    back, or to drift out of step with reality.
+    """
+    return str(uuid.uuid5(SESSION_NAMESPACE, f"{repo}\n{item}\n{role}"))
+
+
+def session_flags(session: str, cwd: Path, store: Path = SESSION_STORE) -> list[str]:
+    """Return the flags that start *session*, or continue it if it exists already.
+
+    The two flags are not interchangeable and neither is forgiving. Verified
+    against the CLI on 2026-08-24: ``--session-id`` creates, and exits 1 with
+    "Session ID ... is already in use" when handed one it already has;
+    ``--resume`` continues and keeps the same id, and exits 1 with "No
+    conversation found with session ID" on one it has never seen.
+
+    So which flag is right is decided by whether the session exists, and the
+    CLI's own store answers that. Reading it is not a state store of ours — it
+    is the transcript the CLI was going to write regardless.
+    """
+    transcript = store / MUNGED.sub("-", str(cwd.resolve())) / f"{session}.jsonl"
+    return ["--resume" if transcript.is_file() else "--session-id", session]
+
+
+def cli_invocation(
+    agent: Agent,
+    prompt: str,
+    executable: str = "claude",
+    session: str | None = None,
+    cwd: Path | None = None,
+) -> list[str]:
     """Return the argv that runs *agent* headlessly against *prompt*.
 
     The agent is applied with ``--append-system-prompt`` and its own frontmatter
@@ -103,8 +149,14 @@ def cli_invocation(agent: Agent, prompt: str, executable: str = "claude") -> lis
     delegation that fails to resolve returns a plausible answer produced by
     nobody. Shared by the eval runner and the orchestrator, so the team has
     exactly one way of invoking an agent.
+
+    With *session*, the run joins the conversation of that id instead of
+    starting cold — the TF-022 case, where a Lead reviewing the same PR for the
+    sixth time has already read the spec, the ADR and the diff five times.
+    Without it the argv is unchanged, byte for byte, so the eval runner's trials
+    stay the independent cold starts they have to be.
     """
-    return [
+    argv = [
         executable,
         "-p",
         prompt,
@@ -117,6 +169,9 @@ def cli_invocation(agent: Agent, prompt: str, executable: str = "claude") -> lis
         "--permission-mode",
         "acceptEdits",
     ]
+    if session is not None:
+        argv += session_flags(session, cwd or Path.cwd())
+    return argv
 
 
 def check_model_is_pinned(agent: Agent) -> list[str]:

@@ -13,6 +13,7 @@ import pytest
 
 from tools.agents import (
     FLOATING_ALIASES,
+    MUNGED,
     PINNED_MODELS,
     SEQUENCE,
     Agent,
@@ -23,8 +24,11 @@ from tools.agents import (
     check_role_tool_policy,
     check_states_its_stop_conditions,
     check_tools_are_known,
+    cli_invocation,
     load_agents,
     parse_agent,
+    session_flags,
+    session_id,
     validate,
 )
 
@@ -289,3 +293,77 @@ def test_naming_a_final_message_mid_file_is_not_a_closing_line(tmp_path: Path) -
         "Then go and do something else entirely.\n",
     )
     assert len(check_closes_by_naming_its_final_message(agent)) == 1
+
+
+# --- session continuity (TF-022) ---------------------------------------------
+
+
+def _touch_transcript(store: Path, cwd: Path, session: str) -> None:
+    """Write the session file the CLI would have written for *cwd*."""
+    directory = store / MUNGED.sub("-", str(cwd.resolve()))
+    directory.mkdir(parents=True)
+    (directory / f"{session}.jsonl").write_text("{}\n", encoding="utf-8")
+
+
+def test_the_same_role_on_the_same_item_derives_the_same_session() -> None:
+    """The whole design rests on this: derived, so nothing has to store it."""
+    first = session_id("TokenFruit/area54", "TF-019", "lead")
+    assert first == session_id("TokenFruit/area54", "TF-019", "lead")
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        ("TokenFruit/area53", "TF-019", "lead"),
+        ("TokenFruit/area54", "TF-021", "lead"),
+        ("TokenFruit/area54", "TF-019", "tester"),
+    ],
+)
+def test_a_different_repo_item_or_role_derives_a_different_session(
+    other: tuple[str, str, str],
+) -> None:
+    """A Lead resuming the Tester's conversation would read its own review back."""
+    assert session_id("TokenFruit/area54", "TF-019", "lead") != session_id(*other)
+
+
+def test_a_session_the_cli_has_never_seen_is_started(tmp_path: Path) -> None:
+    """`--resume` on an unknown id exits 1, so the first round must create."""
+    session = session_id("TokenFruit/area54", "TF-019", "lead")
+    assert session_flags(session, tmp_path, store=tmp_path / "store") == ["--session-id", session]
+
+
+def test_a_session_the_cli_already_has_is_resumed(tmp_path: Path) -> None:
+    """`--session-id` on a known id exits 1, so later rounds must resume."""
+    store, cwd = tmp_path / "store", tmp_path / "repo"
+    cwd.mkdir()
+    session = session_id("TokenFruit/area54", "TF-019", "lead")
+    _touch_transcript(store, cwd, session)
+    assert session_flags(session, cwd, store=store) == ["--resume", session]
+
+
+def test_a_session_from_another_directory_is_not_resumed(tmp_path: Path) -> None:
+    """The store is keyed by cwd: the same id elsewhere is a different conversation."""
+    store, cwd, elsewhere = tmp_path / "store", tmp_path / "repo", tmp_path / "other"
+    cwd.mkdir()
+    elsewhere.mkdir()
+    session = session_id("TokenFruit/area54", "TF-019", "lead")
+    _touch_transcript(store, elsewhere, session)
+    assert session_flags(session, cwd, store=store) == ["--session-id", session]
+
+
+def test_an_invocation_without_a_session_is_unchanged(agents: list[Agent]) -> None:
+    """The eval runner's trials are cold starts by design, for all eight roles."""
+    for agent in agents:
+        assert cli_invocation(agent, "go") == cli_invocation(agent, "go", session=None)
+        assert "--session-id" not in cli_invocation(agent, "go")
+        assert "--resume" not in cli_invocation(agent, "go")
+
+
+def test_an_invocation_with_a_session_appends_the_flags(tmp_path: Path) -> None:
+    """Appended, so everything the default path emits stays where it was."""
+    agent = _definition(
+        tmp_path, "\n## Stop conditions\n\nStop.\n\nYour final message: a verdict.\n"
+    )
+    cold = cli_invocation(agent, "go", session="s", cwd=tmp_path)
+    assert cold[:-2] == cli_invocation(agent, "go")
+    assert cold[-2:] == ["--session-id", "s"]
