@@ -122,11 +122,10 @@ def owning_item(pr: dict[str, object]) -> str | None:
 def roadmap_sections(root: Path = REPO_ROOT) -> dict[str, str]:
     """Every TF number the roadmap lists, and the section heading it sits under.
 
-    The sections carry meaning and the tool reads all of them, not just `Done`:
-    `Now` is what the team is working on, `Next` is committed but not started,
-    `Later` is not committed. Only `Now` is ever dispatched — TF-020 sits in
-    `Next` annotated "Paused at design, deliberately", and `next --run` sent an
-    Architect at it. A `Done` tick retires the item; see `in_flight`.
+    All of the sections, not just `Done`: `Now` is what the team is working on,
+    `Next` is committed but not started, `Later` is not committed. Only `Now` is
+    dispatched — TF-020 sits in `Next` annotated "Paused at design,
+    deliberately", and `next --run` sent an Architect at it.
     """
     path = root / "docs" / "roadmap.md"
     sections: dict[str, str] = {}
@@ -147,11 +146,10 @@ def roadmap_sections(root: Path = REPO_ROOT) -> dict[str, str]:
 def adr_items(root: Path = REPO_ROOT) -> set[str]:
     """Every TF number an ADR states it implements, read from that line alone.
 
-    A TF number anywhere in the prose is a mention — "this supersedes the
-    approach proposed for TF-020" — and claiming an ADR by mention is what
-    commit 0bd582a removed from PR ownership. It costs more here than there: an
-    item wrongly credited with an ADR skips the Architect entirely and is built
-    without one, silently, rather than erroring.
+    A number in the prose is a mention — "this supersedes the approach proposed
+    for TF-020" — and claiming by mention is what 0bd582a removed from PR
+    ownership. It costs more here: an item wrongly credited with an ADR skips
+    the Architect and is built without one, silently rather than with an error.
     """
     lines = (
         line
@@ -311,8 +309,6 @@ def latest_commit(pr: dict[str, object]) -> str:
     """
     raw = pr.get("commits")
     commits = [c for c in raw if isinstance(c, dict)] if isinstance(raw, list) else []
-    if not commits:
-        return UNDATEABLE
     head = str(pr.get("headRefOid") or "")
     matched = [c for c in commits if str(c.get("oid") or "") == head] if head else []
     dated = (str(c.get("committedDate") or "") for c in (matched or commits))
@@ -326,11 +322,11 @@ def latest_verdict(pr: dict[str, object], role: str) -> dict[str, str] | None:
     issue comment and then every review, so the two interleave in time and the
     last of the list is not the latest.
 
-    A verdict counts only if it was posted strictly after the head commit was
-    made. An equal timestamp is stale — GitHub stamps to the second, and a
-    verdict sharing the commit's second may have been written just before it.
-    That is `tools/merge_gate.py`'s rule on the same evidence: approve, push,
-    wait for green, merge what nobody read is the sequence both refuse.
+    A verdict counts only if posted strictly after the head commit was made; an
+    equal timestamp is stale, since GitHub stamps to the second and a verdict
+    sharing the commit's second may have been written just before it. That is
+    `tools/merge_gate.py`'s rule, refusing the same sequence: approve, push,
+    wait for green, merge what nobody read.
     """
     raw = pr.get("comments", [])
     head = latest_commit(pr)
@@ -429,9 +425,8 @@ def next_action(item: Item) -> Action:
             f"Write the ADR for {item.tf}, following .claude/commands/design.md.",
         )
     if not pr and item.merged_pr:
-        # Merged is not ticked, and only the CPO ticks. Reported, never
-        # dispatched: whatever else is true, this item's code is in `main` and
-        # asking a Builder to write it again is the one wrong answer.
+        # Reported, never dispatched: only the CPO ticks the roadmap, and the
+        # one wrong answer for code already in `main` is to write it again.
         return Action(
             "Merged",
             f"#{item.merged_pr} is merged; the roadmap's `Done` section has not caught up",
