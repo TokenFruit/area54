@@ -62,7 +62,7 @@ the CPO approves the ADR before it is accepted. See
 | Format | `ruff format .` |
 | Typecheck | `mypy tools tests` |
 | Unit tests | `pytest` |
-| Agent + command checks | `python tools/validate.py` |
+| Agent, command and constitution checks | `python tools/validate.py` |
 | Behavioural evals | `python -m tools.evals` (live; costs money) |
 | List eval cases | `python -m tools.evals --list` |
 | Build | none — the repo is the plugin |
