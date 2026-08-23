@@ -45,10 +45,11 @@
       "Bash(git push origin:*)",
       "Bash(gh pr create:*)",
       "Bash(gh pr comment:*)",
-      "Bash(gh pr edit:*)"
+      "Bash(gh pr edit:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(python -m tools.merge_gate:*)"
     ],
     "deny": [
-      "Bash(gh pr merge:*)",
       "Bash(git push origin main:*)",
       "Bash(git push --force:*)",
       "Bash(git reset --hard:*)",
