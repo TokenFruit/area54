@@ -23,18 +23,46 @@ the two disagree, the project wins.
 
 ## How the work flows
 
+**`/deliver <roadmap item>` runs the whole sequence.** It stops twice, and
+nowhere else:
+
 ```
-roadmap item
-  → /groom   Product Owner writes the spec        → CPO APPROVES
-  → /design  Architect + Designer, in parallel
-  → /build   Builders implement, open a draft PR
-  → /review  Lead + Tester, independently
-  → CI green                                      → CPO APPROVES
-  → /ship    DevOps merges, tags, deploys
+/deliver <roadmap item>
+  │
+  ├─ Product Owner ─────────── spec ──────────────→ ■ CPO GATE 1
+  │                                                  (open questions answered,
+  │                                                   scope approved)
+  ├─ Architect ┐
+  │  Designer  ┘ in parallel ── ADR + design
+  │
+  ├─ Builders ──────────────── branch + code + unit tests
+  │
+  ├─ gates run ─────────────── typecheck · lint · tests
+  │
+  ├─ Lead ┐ in parallel, ───── findings + DEFECTs
+  │  Tester┘ fresh contexts
+  │        │
+  │        └─ defect loop ─┐
+  │             builder fixes → lead reviews → tester re-verifies
+  │             └───────────── until clean, or stuck twice ──┘
+  │
+  └─ PR opened, CI green ──────────────────────────→ ■ CPO GATE 2
+                                                     (approve, then /ship)
 ```
 
-Two gates belong to the CPO alone: **after the spec** (is this the right
-thing?) and **before merge** (is this good enough to ship?).
+**Gate 1 — after the spec.** Is this the right thing to build? Open questions
+are the gate: the team never answers them for the CPO and never proceeds on an
+assumption.
+
+**Gate 2 — before merge.** Is this good enough to ship? Only the CPO merges.
+
+**Between the gates, the team does not ask.** Findings, defects, failing tests
+and contradictions between an ADR and a design are the team's work, not the
+CPO's. The single exception: two consecutive defect rounds with no progress
+means the team is stuck, and being stuck is worth interrupting for.
+
+The individual commands — `/groom`, `/design`, `/build`, `/review`, `/ship` —
+still exist for running one stage on its own, or resuming a pipeline partway.
 
 ## Model pinning
 
@@ -89,6 +117,31 @@ planted defects. It is the weakest link in the gate. Be suspicious of it: if you
 see the Tester edit implementation code, say so — that is a real regression and
 it belongs back in area54 as a failing eval case.
 
+## What each role may run
+
+Tool grants come from each agent's own definition and arrive already scoped.
+Shell access is broader, because a Builder that cannot run its own tests stalls
+and — if it is honest — reports that it could not verify its own work. That
+stall is what made this pipeline need a human at every seam.
+
+| Role | Shell it needs | Must never run |
+| --- | --- | --- |
+| Product Owner | none | anything; it has no `Bash` grant |
+| Designer | none | anything; it has no `Bash` grant |
+| Architect | read-only git, to survey the codebase | writes of any kind |
+| Builders | the project's test, typecheck and lint commands; `git add/commit/push`; `gh pr create` | `gh pr merge`, force pushes, pushes to `main` |
+| Lead | read-only git and `gh pr diff`; the test commands, to reproduce a finding | **any command that modifies a tracked file.** It holds no edit tool; using the shell to get around that is the same violation |
+| Tester | the test commands; writes under `tests/` only | edits to implementation code — that is a DEFECT, not a fix |
+| DevOps | the full pipeline, tags, deploys | `gh pr merge` without explicit CPO approval on the PR |
+
+**Where this is enforced, honestly.** The `tools:` list in each agent
+definition is enforced by the harness — the Lead genuinely cannot call `Edit`.
+Shell *patterns* are session-wide in `.claude/settings.json`, not per-agent, so
+"the Lead must not `sed` a tracked file" lives in its prompt and in review, not
+in a sandbox. The global deny list still catches the destructive cases for
+everyone: `gh pr merge`, force pushes, pushes to `main`, `git reset --hard`,
+and reading `.env`.
+
 ## Definition of Done
 
 A feature is done when **all** of these are true. No exceptions, no "we'll do it
@@ -131,9 +184,14 @@ in a follow-up" unless the CPO says so in writing on the PR.
 
 ## Handoff rules
 
-Agents do not talk to each other. They read and write files, and the CPO or a
-slash command moves work between them. This is deliberate: every handoff must
-leave a durable artifact.
+Agents hand work to each other along the sequence above, and `/deliver` is what
+carries it. **Every handoff still leaves a durable artifact** — a committed
+spec, an ADR, a branch, a PR comment. That rule has not changed and is the
+reason the chain can be resumed, audited, or picked up cold weeks later.
+
+What changed is that the CPO is no longer the courier. An agent finishing its
+stage names the next agent and the artifact it produced; it does not stop and
+wait for a human to carry it.
 
 | Role          | Reads                              | Writes                    |
 | ------------- | ---------------------------------- | ------------------------- |

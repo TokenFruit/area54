@@ -19,8 +19,12 @@ acceptance criteria here, stop and run `/groom` instead.
 
 <!-- Committed, not started. -->
 
-- [ ] TF-009 — Run a real feature through the team end to end in area52. The
-      install is done; nothing has been *built* by the team yet on real code
+- [ ] TF-012 — Redeploy the team to area52 once TF-011 lands, so it gets
+      `/deliver`, the published sequence, and the shell permissions
+
+- [ ] TF-009 — Finish the first real feature end to end in area52. Spec, ADR
+      and code are done and green; three review findings are open and the
+      defect loop has not been run yet
 - [ ] TF-010 — Close area52's two Definition-of-Done gaps: ESLint is
       unconfigured (`next lint` is deprecated and prompts interactively), and
       `npm run build` needs DATABASE_URL and the NextAuth secrets
@@ -53,6 +57,9 @@ acceptance criteria here, stop and run `/groom` instead.
       CI — 2026-08-23
 - [x] **TF-004** — Tool scoping per role, and every command delegation resolved
       against a real agent — 2026-08-23
+- [x] **TF-011** — Publish the sequence and make the team run it: `/deliver`
+      chains the pipeline to two CPO gates, agents name their successors, and
+      shell permissions stop them stalling — 2026-08-23
 - [x] **TF-006** — Deploy to the first target repo. area52 (Promptico), named
       by the CPO — installer, portable constitution, and CI — 2026-08-23
 - [x] **TF-005** — Eval harness: fixtures with planted defects, scoring over
