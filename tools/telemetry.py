@@ -5,6 +5,7 @@ python -m tools.telemetry
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from collections import Counter
@@ -110,9 +111,29 @@ def render(runs: list[Run]) -> str:
     return "\n".join(lines)
 
 
-def main() -> int:
-    print(render(group_runs(parse_events())))
-    return 0
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="tools.telemetry", description=__doc__)
+    parser.add_argument(
+        "repos",
+        nargs="*",
+        help="repositories to report on. Defaults to this one.",
+    )
+    args = parser.parse_args(argv)
+
+    roots = [Path(r).expanduser().resolve() for r in args.repos] or [REPO_ROOT]
+    exit_code = 0
+    for index, root in enumerate(roots):
+        if len(roots) > 1:
+            if index:
+                print()
+            print(f"── {root.name} ──")
+        log = root / ".claude" / "telemetry.jsonl"
+        if not root.is_dir():
+            print(f"::error::{root} is not a directory.")
+            exit_code = 1
+            continue
+        print(render(group_runs(parse_events(log))))
+    return exit_code
 
 
 if __name__ == "__main__":
