@@ -13,11 +13,18 @@ call and returns the message to the agent.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import sys
+import time
+from pathlib import Path
 
 PROTECTED_BRANCHES = {"main", "master", "trunk"}
+
+#: Must match tools/merge_gate.TOKEN_TTL_SECONDS. Kept here rather than
+#: imported: the hook runs in target repos, where tools/ is not deployed.
+AUTHORISATION_TTL_SECONDS = 10 * 60
 
 
 def _tokens(command: str) -> list[str]:
@@ -60,15 +67,56 @@ def _blocks_single(command: str) -> str | None:
                     )
 
     if tokens[0] == "gh" and tokens[1:3] == ["pr", "merge"]:
-        return (
-            "refusing to merge. Merging is the CPO's decision and no agent merges "
-            "its own work. Report at the gate instead."
-        )
+        return _merge_refusal(tokens)
 
     if tokens[0] == "git" and tokens[1:2] == ["reset"] and "--hard" in tokens:
         return "refusing `git reset --hard`: it discards work that was never committed."
 
     return None
+
+
+def _merge_refusal(tokens: list[str]) -> str | None:
+    """Refuse a merge unless the gate actually passed for this exact PR.
+
+    Not "unless the agent believes the gate passed". tools/merge_gate.py writes
+    a short-lived authorisation naming the PR and head SHA; without a valid one
+    that names *this* PR, the merge is refused. An agent cannot author the
+    authorisation by deciding it deserves one — the gate writes it, and only
+    after every rule passed.
+    """
+    requested = next((t for t in tokens[3:] if t.isdigit()), None)
+    if requested is None:
+        return "refusing to merge: no PR number given, so no authorisation can match it."
+
+    token = _read_authorisation()
+    if token is None:
+        return (
+            f"refusing to merge PR #{requested}: no valid merge authorisation. "
+            f"Run `python -m tools.merge_gate {requested} --repo <owner/name>` first. "
+            f"If it refuses, report that to the CPO rather than working around it."
+        )
+    if str(token.get("pr")) != requested:
+        return (
+            f"refusing to merge PR #{requested}: the authorisation on disk is for "
+            f"PR #{token.get('pr')}. One gate pass authorises one merge."
+        )
+    return None
+
+
+def _read_authorisation() -> dict[str, object] | None:
+    """Read a valid, unexpired authorisation written by the merge gate."""
+    root = Path(os.environ.get("CLAUDE_PROJECT_DIR") or ".")
+    path = root / ".claude" / "merge-authorisation.json"
+    if not path.is_file():
+        return None
+    try:
+        token = json.loads(path.read_text(encoding="utf-8"))
+        issued = float(token.get("issued", 0))
+    except (json.JSONDecodeError, OSError, AttributeError, TypeError, ValueError):
+        return None
+    if not isinstance(token, dict) or time.time() - issued > AUTHORISATION_TTL_SECONDS:
+        return None
+    return token
 
 
 def main() -> int:

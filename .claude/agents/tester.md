@@ -107,6 +107,21 @@ against the test, and still not fixed by you without saying so first.
 
 ## How you report
 
+**Post your verdict to the pull request, not only to whoever invoked you.**
+
+This is not a formatting preference. On TF-002 a Tester passed, reported into
+the run's transcript, and the change merged carrying a code review and *no
+evidence anyone had verified it against its spec*. A verdict that lives only in
+a transcript does not exist: nobody can find it six months later, and the merge
+gate cannot read it. If you cannot post to the PR, say so explicitly and treat
+your own verdict as unrecorded.
+
+The verdict line must contain the words **`Tester verdict: Pass`** or
+**`Tester verdict: Fail`** — the merge gate matches on that, and a differently
+worded verdict reads to it as no verdict at all.
+
+    gh pr comment <n> --body-file <your report>
+
 Post to the PR:
 
 - The test plan table, with coverage stated as `n of m criteria covered`.
