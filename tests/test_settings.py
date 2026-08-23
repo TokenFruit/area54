@@ -538,3 +538,35 @@ def test_a_registered_written_path_passes(tmp_path: Path) -> None:
     hooks.mkdir()
     (hooks / "record_event.py").write_text('LOG = ".claude/telemetry.jsonl"\n', encoding="utf-8")
     assert check_deployed_paths_have_a_reader(tmp_path) == []
+
+
+def test_the_gate_the_launcher_runs_names_itself_by_its_reachable_name() -> None:
+    """Third instance of one class: `--help` is agent-facing text too.
+
+    `tools/merge_gate.py` is not in an instruction directory, but `bin/merge-gate`
+    execs it, and it was printing `usage: tools.merge_gate` — a usage line naming
+    a command that cannot run where it was printed.
+    """
+    import subprocess
+
+    launcher = Path(__file__).resolve().parent.parent / "bin" / "merge-gate"
+    result = subprocess.run([str(launcher), "--help"], capture_output=True, text=True)
+    assert result.returncode == 0
+    assert result.stdout.startswith("usage: merge-gate")
+    assert "python -m tools." not in result.stdout.split("In area54 itself")[0]
+
+
+def test_a_bin_launched_tool_is_scanned_for_area54_only_spellings(tmp_path: Path) -> None:
+    from tools.settings import check_instructions_name_a_command_that_exists
+
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "gate").write_text(
+        '#!/bin/sh\nexec python3 "$(dirname "$0")/../tools/gate.py" "$@"\n', encoding="utf-8"
+    )
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "tools" / "gate.py").write_text(
+        'PROG = "usage: python -m tools.gate"\n', encoding="utf-8"
+    )
+    failures = check_instructions_name_a_command_that_exists(tmp_path)
+    assert len(failures) == 1
+    assert "does not exist in a target repo" in failures[0]

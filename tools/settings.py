@@ -432,9 +432,31 @@ AREA54_ONLY = re.compile(r"\btools[./]\w+")
 AREA54_SCOPED = "area54"
 
 #: Every directory the plugin carries whose contents are read as instructions in
-#: a target repo. `commands/` was the gap: the class was closed over hooks and
-#: agents, and left standing in the seven prompts nothing scanned.
+#: a target repo. `commands/` was the first gap: the class was closed over hooks
+#: and agents, and left standing in the seven prompts nothing scanned.
 INSTRUCTION_DIRS = ("agents", "commands", "hooks")
+
+
+def _launched_tools(root: Path) -> list[Path]:
+    """Return the tools `bin/` launches, which print to agents too.
+
+    The second gap. `tools/merge_gate.py` is not in an instruction directory,
+    but `bin/merge-gate` execs it and its `--help` was printing
+    `usage: tools.merge_gate` — a usage line naming a command that cannot run
+    where it was printed.
+    """
+    bin_dir = root / "bin"
+    if not bin_dir.is_dir():
+        return []
+    launched = []
+    for entry in sorted(bin_dir.iterdir()):
+        if not entry.is_file():
+            continue
+        for match in re.findall(r"[\w./-]+\.py", entry.read_text(encoding="utf-8")):
+            candidate = root / match.split("/")[-2] / match.split("/")[-1]
+            if candidate.is_file():
+                launched.append(candidate)
+    return launched
 
 
 def _agent_facing_text(path: Path) -> str:
@@ -487,18 +509,23 @@ def check_instructions_name_a_command_that_exists(root: Path = REPO_ROOT) -> lis
 
     A mention is allowed when it says which repo it applies to. Two do.
     """
+    shipped_files = [
+        shipped
+        for directory in INSTRUCTION_DIRS
+        if (root / directory).is_dir()
+        for shipped in sorted((root / directory).glob("*.md"))
+        + sorted((root / directory).glob("*.py"))
+    ]
+    shipped_files += _launched_tools(root)
+
     failures = []
-    for directory in INSTRUCTION_DIRS:
-        path = root / directory
-        if not path.is_dir():
-            continue
-        for shipped in sorted(path.glob("*.md")) + sorted(path.glob("*.py")):
-            for name in _unscoped_area54_references(_agent_facing_text(shipped)):
-                failures.append(
-                    f"{directory}/{shipped.name}: names `{name}`, which does not exist in a "
-                    f"target repo. This text is an instruction the agent follows — name the "
-                    f"bin/ command, or say that the spelling is for area54 itself."
-                )
+    for shipped in shipped_files:
+        for name in _unscoped_area54_references(_agent_facing_text(shipped)):
+            failures.append(
+                f"{shipped.parent.name}/{shipped.name}: names `{name}`, which does not exist "
+                f"in a target repo. This text is an instruction the agent follows — name the "
+                f"bin/ command, or say that the spelling is for area54 itself."
+            )
     return failures
 
 

@@ -10,7 +10,11 @@ head SHA. The shell guard permits `gh pr merge` only when a valid authorisation
 matches, so an agent cannot merge by concluding it is allowed to — only by
 having actually passed.
 
-    python -m tools.merge_gate 8 --repo owner/name
+    merge-gate 8 --repo owner/name
+
+The plugin puts `bin/` on PATH, so that name resolves in every repo the team is
+installed in. In area54 itself, `python -m tools.merge_gate 8 --repo owner/name`
+runs the same file.
 """
 
 from __future__ import annotations
@@ -283,7 +287,10 @@ def read_authorisation(root: Path) -> dict[str, object] | None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="tools.merge_gate", description=__doc__)
+    # The name an agent can actually type. `--help` is agent-facing text: it was
+    # printing `usage: tools.merge_gate`, and a target repo has no `tools`
+    # package, so the usage line named a command that could not run there.
+    parser = argparse.ArgumentParser(prog="merge-gate", description=__doc__)
     parser.add_argument("pr", type=int)
     parser.add_argument("--repo", required=True)
     parser.add_argument("--root", default=".", help="where to write the authorisation")
