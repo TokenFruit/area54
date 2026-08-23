@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-from tools.agents import load_agents
+from tools.agents import cli_invocation, load_agents
 from tools.evals.case import EvalCase
 
 
@@ -130,19 +130,7 @@ class ClaudeCliRunner:
     def build_command(self, case: EvalCase) -> list[str]:
         """Return the argv for one trial. Separated out so it can be tested."""
         agent = next(a for a in load_agents() if a.name == case.agent)
-        return [
-            self.executable,
-            "-p",
-            case.prompt,
-            "--append-system-prompt",
-            agent.body.strip(),
-            "--allowed-tools",
-            *agent.tools,
-            "--model",
-            agent.model,
-            "--permission-mode",
-            "acceptEdits",
-        ]
+        return cli_invocation(agent, case.prompt, self.executable)
 
     def run(self, case: EvalCase, workdir: Path) -> TrialRun:
         if not self.is_available():
