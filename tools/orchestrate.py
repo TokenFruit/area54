@@ -26,7 +26,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from tools.agents import cli_invocation, load_agents
-from tools.merge_gate import LEAD_APPROVE, LEAD_REJECT, NO_SPEC_WAIVER, TESTER_VERDICT
+from tools.merge_gate import (
+    LEAD_APPROVE,
+    LEAD_COUNTS,
+    LEAD_REJECT,
+    NO_SPEC_WAIVER,
+    TESTER_VERDICT,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -272,14 +278,29 @@ def missing_verdicts(pr: dict[str, object]) -> list[str]:
     return [role for role in VERDICTS if latest_verdict(pr, role) is None]
 
 
-def changes_requested(pr: dict[str, object]) -> bool:
-    """Whether the latest Lead verdict on this head asks for changes.
+def rejecting_verdict(pr: dict[str, object]) -> str | None:
+    """The role whose current verdict refuses this head, or None.
+
+    What counts as a refusal is the merge gate's answer, not a looser one: an
+    approval reporting blockers or majors is refused there by `LEAD_COUNTS`, and
+    a Tester `Fail` by `check_tester_verdict`. Reading only the word `Approve`
+    reported this PR "Ready to ship" on a live board while the Lead's two
+    blockers and the Tester's Fail stood — the Lead's review quotes the string
+    `**Verdict: Approve.**` inside a finding, and a quote read as a verdict.
 
     A verdict the head commit postdates is not returned at all, so the defect
-    loop leaves on a commit exactly as it did before.
+    loop still leaves on a commit.
     """
-    verdict = latest_verdict(pr, "Lead")
-    return verdict is not None and not LEAD_APPROVE.search(verdict["body"])
+    lead = latest_verdict(pr, "Lead")
+    if lead is not None and (
+        not LEAD_APPROVE.search(lead["body"])
+        or any(int(m.group(1) or m.group(2) or 0) > 0 for m in LEAD_COUNTS.finditer(lead["body"]))
+    ):
+        return "Lead"
+    tester = latest_verdict(pr, "Tester")
+    if tester is not None and (match := TESTER_VERDICT.search(tester["body"])):
+        return "Tester" if match.group(1).lower() == "fail" else None
+    return None
 
 
 def stalls(item: Item) -> list[str]:
@@ -288,8 +309,8 @@ def stalls(item: Item) -> list[str]:
     if not pr:
         return []
     found = []
-    if changes_requested(pr):
-        found.append("changes requested, and no commit since — the fix was never picked up")
+    if role := rejecting_verdict(pr):
+        found.append(f"the {role} refused this head, and no commit since — nobody picked the fix up")
     green = ci_state(pr) == "green"
     missing = missing_verdicts(pr)
     if green and not pr.get("isDraft") and missing:
@@ -342,13 +363,13 @@ def next_action(item: Item) -> Action:
             OWNING_BUILDER,
             f"CI is failing on the PR for {item.tf}. Fix the cause, not the test.",
         )
-    if changes_requested(pr):
+    if role := rejecting_verdict(pr):
         return Action(
             "Defect loop",
-            "latest Lead verdict requests changes, and no commit since",
+            f"the latest {role} verdict refuses this head, and no commit since",
             "agent",
             OWNING_BUILDER,
-            f"Address the Lead's findings on the PR for {item.tf}. Never edit the failing test.",
+            f"Address the {role}'s findings on the PR for {item.tf}. Never edit the failing test.",
         )
     # "PRs open as draft, and are marked ready only when CI is green."
     if pr.get("isDraft") and ci == "green":

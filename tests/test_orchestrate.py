@@ -18,7 +18,6 @@ from tools.orchestrate import (
     Action,
     Item,
     OrchestratorError,
-    changes_requested,
     ci_state,
     dispatch,
     in_flight,
@@ -27,6 +26,7 @@ from tools.orchestrate import (
     missing_verdicts,
     next_action,
     owning_item,
+    rejecting_verdict,
     roadmap_done,
     stalls,
 )
@@ -139,7 +139,7 @@ def test_a_commit_after_the_verdict_moves_the_loop_on() -> None:
         comments=[{"body": LEAD_NO, "at": "2026-08-24T10:00:00Z"}],
         commits=[{"committedDate": "2026-08-24T11:00:00Z"}],
     )
-    assert not changes_requested(fixed)
+    assert rejecting_verdict(fixed) is None
     assert next_action(item(pr=fixed)).stage == "In review"
 
 
@@ -186,7 +186,7 @@ def test_the_latest_verdict_is_the_latest_by_time_not_by_list_order() -> None:
             {"body": LEAD_NO, "at": "2026-08-24T09:30:00Z"},
         ]
     )
-    assert not changes_requested(reordered)
+    assert rejecting_verdict(reordered) is None
     verdict = latest_verdict(reordered, "Lead")
     assert verdict is not None and verdict["at"] == "2026-08-24T12:00:00Z"
 
@@ -198,8 +198,40 @@ def test_an_approval_that_predates_the_latest_rejection_does_not_hide_it() -> No
             {"body": LEAD_OK, "at": "2026-08-24T09:30:00Z"},
         ]
     )
-    assert changes_requested(later_rejection)
+    assert rejecting_verdict(later_rejection) == "Lead"
     assert next_action(item(pr=later_rejection)).stage == "Defect loop"
+
+
+def test_an_approval_reporting_blockers_is_not_an_approval() -> None:
+    """The live board's own failure: a quoted `Verdict: Approve` read as one.
+
+    The Lead's review of this PR quotes the string inside a finding and closes
+    `**Verdict: Changes requested** — 2 blockers`. The merge gate counts the
+    blockers and refuses; reading the word alone reported "Ready to ship".
+    """
+    quoted = "The Lead posting `**Verdict: Approve.**` at 12:00 …\n\n2 blockers, 4 majors."
+    refused = pr(comments=[{"body": quoted, "at": "2026-08-24T10:00:00Z"}])
+    assert rejecting_verdict(refused) == "Lead"
+    assert next_action(item(pr=refused)).stage == "Defect loop"
+
+
+def test_a_tester_fail_is_a_refusal_not_a_verdict_in_hand() -> None:
+    failed = pr(
+        comments=[
+            {"body": LEAD_OK, "at": "2026-08-24T10:00:00Z"},
+            {"body": "**Tester verdict: Fail** — 3 defects.", "at": "2026-08-24T10:05:00Z"},
+        ]
+    )
+    assert rejecting_verdict(failed) == "Tester"
+    action = next_action(item(pr=failed))
+    assert action.stage == "Defect loop"
+    assert action.prompt is not None and "Tester's findings" in action.prompt
+
+
+def test_a_lead_approval_with_no_counts_still_approves() -> None:
+    """The other direction: `0 blockers, 0 majors` is what the gate lets through."""
+    assert rejecting_verdict(pr()) is None
+    assert next_action(item()).stage == "Ready to ship"
 
 
 def test_a_green_draft_is_marked_ready() -> None:
