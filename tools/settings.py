@@ -68,6 +68,33 @@ MUST_BE_BLOCKED = (
     "env FOO=1 git push origin main",
     "FOO=1 git push origin main",
     "bash -c \"bash -c 'git push origin main'\"",
+    # A blocklist over an unbounded grammar: `&` is a separator and `&&` did not
+    # match it, `eval` is not a shell, `-lc` is not `-c`, `--` moves the payload,
+    # and one option before the command broke `env`'s fallback. Each was found in
+    # a later round than the last. The guard now looks for `git`/`gh` anywhere in
+    # the text the shell would execute, so where they sit and what put them there
+    # stopped mattering.
+    "sleep 0 & git push origin main",
+    'eval "git push origin main"',
+    'bash -lc "git push origin main"',
+    'bash -c -- "git push origin main"',
+    "env -i git push origin main",
+    "{ git push origin main; }",
+    # Backticks and $(...) run inside double quotes — checked against bash, not
+    # assumed. A double-quoted body that substitutes really does push.
+    'gh pr comment 1 --body "see `git push origin main` here"',
+)
+
+#: Commands whose text merely *mentions* a protected command. The shell runs
+#: none of them, so refusing one is an accusation that is factually untrue and
+#: the agent has nothing to act on — it also stops an agent documenting the very
+#: rule the guard enforces. This is the direction a blocklist breaks when it is
+#: widened carelessly, and one widening did break it.
+MUST_NOT_BE_BLOCKED_FOR_MENTIONING = (
+    'echo "do not use git push origin main"',
+    "gh pr comment 1 --body 'never run `git push origin main` directly'",
+    "gh pr comment 1 --body-file review.md",
+    "git push origin feature/main",
 )
 
 #: Commands the team cannot work without. A guard that blocks these is broken
@@ -431,19 +458,18 @@ AREA54_ONLY = re.compile(r"\btools[./]\w+")
 #: at the far end of a file cannot launder an unscoped instruction.
 AREA54_SCOPED = "area54"
 
-#: Every directory the plugin carries whose contents are read as instructions in
-#: a target repo. `commands/` was the first gap: the class was closed over hooks
-#: and agents, and left standing in the seven prompts nothing scanned.
-INSTRUCTION_DIRS = ("agents", "commands", "hooks")
+#: Directories Claude Code discovers by convention. Everything in them is a
+#: plugin component and travels; nothing declares them, so they are the one part
+#: of the shipped set that cannot be derived from something else.
+COMPONENT_DIRS = ("agents", "commands", "hooks")
 
 
 def _launched_tools(root: Path) -> list[Path]:
     """Return the tools `bin/` launches, which print to agents too.
 
-    The second gap. `tools/merge_gate.py` is not in an instruction directory,
-    but `bin/merge-gate` execs it and its `--help` was printing
-    `usage: tools.merge_gate` — a usage line naming a command that cannot run
-    where it was printed.
+    `tools/merge_gate.py` is in no instruction directory, but `bin/merge-gate`
+    execs it and its `--help` was printing `usage: tools.merge_gate` — a usage
+    line naming a command that cannot run where it was printed.
     """
     bin_dir = root / "bin"
     if not bin_dir.is_dir():
@@ -453,20 +479,64 @@ def _launched_tools(root: Path) -> list[Path]:
         if not entry.is_file():
             continue
         for match in re.findall(r"[\w./-]+\.py", entry.read_text(encoding="utf-8")):
-            candidate = root / match.split("/")[-2] / match.split("/")[-1]
-            if candidate.is_file():
-                launched.append(candidate)
+            # Resolved against the launcher, then required to be inside the
+            # repo. Indexing path segments raised IndexError on a match with no
+            # slash, and a validator that crashes when someone adds a launcher
+            # is worse than one that misses it: the traceback has no connection
+            # to what they did.
+            # `exec python3 "$(dirname "$0")/../tools/x.py"` leaves the match
+            # starting at `/../` — an absolute path that resolves outside the
+            # repo. Both readings are tried, and containment decides.
+            for spelling in (match, match.lstrip("/")):
+                candidate = (entry.parent / spelling).resolve()
+                if candidate.is_file() and root.resolve() in candidate.parents:
+                    launched.append(candidate)
+                    break
     return launched
+
+
+def shipped_instruction_files(root: Path = REPO_ROOT) -> list[Path]:
+    """Return every file whose text reaches an agent in a target repo.
+
+    **Derived, not listed.** Three rounds of review found three instances of one
+    class, each one directory outside the previous fix, because the boundary was
+    a hand-typed tuple sitting next to the real answer. The set that matters is
+    the bytes that arrive in a target: the plugin's component directories, plus
+    whatever `tools.deploy.PAYLOAD` copies, plus the tools `bin/` launches. The
+    fourth instance was in `team/TEAM.md` — the constitution, the largest piece
+    of shipped instruction text in the repo, and the one file `CLAUDE.md` says
+    every agent inherits.
+
+    Adding a payload entry now adds it to this scan by construction.
+    """
+    from tools.deploy import PAYLOAD
+
+    files: list[Path] = []
+    for directory in COMPONENT_DIRS:
+        path = root / directory
+        if path.is_dir():
+            files += sorted(path.glob("*.md")) + sorted(path.glob("*.py"))
+    for source, _ in PAYLOAD:
+        path = root / source
+        if path.is_file():
+            files.append(path)
+        elif path.is_dir():
+            files += sorted(child for child in path.rglob("*") if child.is_file())
+    return [*dict.fromkeys(files + _launched_tools(root))]
 
 
 def _agent_facing_text(path: Path) -> str:
     """Return the part of *path* an agent could read as an instruction.
 
-    All of a markdown prompt. For a hook, only its string literals: a comment
+    All of a markdown file. For Python, only its string literals — a comment
     saying "must match tools/merge_gate.TOKEN_TTL_SECONDS" documents a constant
-    for whoever maintains the file, and never reaches an agent. Scanning the
-    whole source flags it, and a check that cries wolf about its own comments
-    gets its rule widened until it catches nothing.
+    for whoever maintains the file and never reaches an agent, and a check that
+    cries wolf about its own source gets widened until it catches nothing.
+
+    Each literal is placed back on the source line it came from, so that "the
+    line before" keeps meaning the line before. Joining the literals instead let
+    an unrelated string four lines away, in another scope, launder an unscoped
+    instruction — and `hooks/` is exactly where this class first appeared.
     """
     text = path.read_text(encoding="utf-8")
     if path.suffix != ".py":
@@ -475,11 +545,13 @@ def _agent_facing_text(path: Path) -> str:
         tree = ast.parse(text)
     except SyntaxError:  # pragma: no cover - the file would fail CI first
         return text
-    return "\n".join(
-        node.value
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Constant) and isinstance(node.value, str)
-    )
+    lines = [""] * (len(text.splitlines()) + 1)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            for offset, fragment in enumerate(node.value.splitlines() or [""]):
+                index = min(node.lineno - 1 + offset, len(lines) - 1)
+                lines[index] += " " + fragment
+    return "\n".join(lines)
 
 
 def _unscoped_area54_references(text: str) -> list[str]:
@@ -509,17 +581,8 @@ def check_instructions_name_a_command_that_exists(root: Path = REPO_ROOT) -> lis
 
     A mention is allowed when it says which repo it applies to. Two do.
     """
-    shipped_files = [
-        shipped
-        for directory in INSTRUCTION_DIRS
-        if (root / directory).is_dir()
-        for shipped in sorted((root / directory).glob("*.md"))
-        + sorted((root / directory).glob("*.py"))
-    ]
-    shipped_files += _launched_tools(root)
-
     failures = []
-    for shipped in shipped_files:
+    for shipped in shipped_instruction_files(root):
         for name in _unscoped_area54_references(_agent_facing_text(shipped)):
             failures.append(
                 f"{shipped.parent.name}/{shipped.name}: names `{name}`, which does not exist "

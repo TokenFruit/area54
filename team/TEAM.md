@@ -89,8 +89,9 @@ its build on any alias. In this repo the pins simply arrive already set — if y
 find a floating alias here, the deployment is stale; re-run the installer.
 
 Changing a pin is a **minor** version bump, never a patch, and requires a full
-eval run before merge. Adding a newly released model means adding it to
-`PINNED_MODELS` in `tools/agents.py` in the same PR that first uses it.
+eval run before merge. Adding a newly released model is a change to area54 — its
+`PINNED_MODELS` list lives there, not here — and it lands in the same PR that
+first uses it.
 
 All eight agents currently run `claude-opus-5`. Whether every role needs the
 strongest model is a live cost question and a CPO decision, not a drive-by edit.

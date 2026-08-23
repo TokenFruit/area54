@@ -570,3 +570,64 @@ def test_a_bin_launched_tool_is_scanned_for_area54_only_spellings(tmp_path: Path
     failures = check_instructions_name_a_command_that_exists(tmp_path)
     assert len(failures) == 1
     assert "does not exist in a target repo" in failures[0]
+
+
+# --- the scan set is derived from what ships ------------------------------
+
+
+def test_the_scan_set_covers_everything_the_installer_copies() -> None:
+    """Three rounds found three instances, each one directory outside the last.
+
+    The boundary was a hand-typed tuple sitting next to the real answer. The
+    fourth instance was in `team/TEAM.md` — the constitution, which `CLAUDE.md`
+    says every agent inherits, and which nothing scanned.
+    """
+    from tools.deploy import PAYLOAD
+    from tools.settings import shipped_instruction_files
+
+    scanned = {p.resolve() for p in shipped_instruction_files()}
+    root = Path(__file__).resolve().parent.parent
+    for source, _ in PAYLOAD:
+        path = (root / source).resolve()
+        if path.is_file():
+            assert path in scanned, f"{source} is copied into every target and not scanned"
+
+
+def test_the_constitution_is_scanned() -> None:
+    from tools.settings import shipped_instruction_files
+
+    root = Path(__file__).resolve().parent.parent
+    assert (root / "team" / "TEAM.md").resolve() in {
+        p.resolve() for p in shipped_instruction_files()
+    }
+
+
+def test_a_distant_string_cannot_launder_an_unscoped_instruction(tmp_path: Path) -> None:
+    """ "The line before" meant "the previous string constant in walk order".
+
+    So an unrelated banner four source lines away, in another scope, exempted a
+    refusal message — latent in the one directory this class keeps returning to.
+    """
+    from tools.settings import check_instructions_name_a_command_that_exists
+
+    (tmp_path / "hooks").mkdir()
+    (tmp_path / "hooks" / "guard.py").write_text(
+        'BANNER = "area54 shell guard"\n\n\ndef refuse() -> str:\n'
+        '    return "Run `python -m tools.merge_gate 1` first."\n',
+        encoding="utf-8",
+    )
+    failures = check_instructions_name_a_command_that_exists(tmp_path)
+    assert len(failures) == 1, failures
+
+
+def test_a_launcher_without_a_path_separator_does_not_crash(tmp_path: Path) -> None:
+    """It raised IndexError and took `tools/validate.py` down with it.
+
+    A validator that crashes when someone adds a launcher is worse than one that
+    misses it: the traceback has no connection to what they did.
+    """
+    from tools.settings import check_instructions_name_a_command_that_exists
+
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "g").write_text('#!/bin/sh\nexec python3 merge_gate.py "$@"\n', "utf-8")
+    assert check_instructions_name_a_command_that_exists(tmp_path) == []

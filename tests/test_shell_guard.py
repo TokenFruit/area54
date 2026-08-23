@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+from tools.settings import MUST_NOT_BE_BLOCKED_FOR_MENTIONING
+
 _spec = importlib.util.spec_from_file_location(
     "guard_bash", Path(__file__).resolve().parent.parent / "hooks" / "guard_bash.py"
 )
@@ -156,12 +158,68 @@ def test_two_levels_of_real_nesting_are_still_read() -> None:
     assert guard.blocks("""bash -c 'bash -c "npm test"'""") is None
 
 
-def test_the_depth_cap_refuses_rather_than_gives_up() -> None:
+def test_the_depth_cap_stops_unwrapping_rather_than_recursing_forever() -> None:
     """A backstop, tested at the mechanism rather than through a quoted string.
 
     Shell quoting does not nest by repetition — `bash -c "bash -c "x""` is not
-    two levels — so the cap cannot be reached by piling on quotes. It exists so
-    that a shape which *does* recurse ends in a refusal rather than in a return
-    to allowed.
+    two levels — so the cap cannot be reached by piling on quotes. Past it the
+    text is returned unchanged rather than unwrapped further, which keeps the
+    scan running over it instead of dropping it.
     """
-    assert guard._blocks_command("npm test", depth=5) is not None
+    assert guard._executable_text("git push origin main", depth=9) == "git push origin main"
+
+
+# --- the shape, not the enumeration ---------------------------------------
+
+
+@pytest.mark.parametrize("command", MUST_NOT_BE_BLOCKED_FOR_MENTIONING)
+def test_merely_naming_a_protected_command_is_not_refused(command: str) -> None:
+    """The direction a blocklist breaks when it is widened carelessly.
+
+    A refusal here is an accusation that is factually untrue — the command
+    pushes nothing — so the agent has nothing to act on. It also stops an agent
+    documenting the very rule the guard enforces.
+    """
+    assert guard.blocks(command) is None, command
+
+
+def test_the_quoting_rules_match_what_bash_actually_does() -> None:
+    """Checked against bash rather than assumed, in all four combinations.
+
+    Backticks and `$(...)` *do* substitute inside double quotes, so a
+    double-quoted body containing one really would push — refusing it is
+    correct, not a false positive. Inside single quotes they are literal, and
+    plain prose substitutes nothing whichever quote holds it.
+    """
+    runs = 'gh pr comment 1 --body "see `git push origin main` here"'
+    substitutes = 'gh pr comment 1 --body "see $(git push origin main) here"'
+    inert_quote = "gh pr comment 1 --body 'see `git push origin main` here'"
+    inert_prose = 'gh pr comment 1 --body "see git push origin main here"'
+    assert guard.blocks(runs) is not None
+    assert guard.blocks(substitutes) is not None
+    assert guard.blocks(inert_quote) is None
+    assert guard.blocks(inert_prose) is None
+
+
+def test_a_wrapper_payload_is_read_however_the_flag_was_spelled() -> None:
+    """`-lc`, `-c --` and `eval` each needed their own entry before."""
+    for command in (
+        'bash -lc "git push origin main"',
+        'bash -c -- "git push origin main"',
+        'eval "git push origin main"',
+    ):
+        assert guard.blocks(command) is not None, command
+    assert guard.blocks('bash -lc "npm test"') is None
+
+
+def test_a_global_option_cannot_push_the_verb_out_of_range() -> None:
+    """`git -C .` is what an agent types when it is not in the repo root."""
+    assert guard.blocks("git -C . push origin main") is not None
+    assert guard.blocks("git -C . push origin feature/x") is None
+
+
+def test_a_fully_qualified_ref_names_the_same_branch() -> None:
+    """`refs/heads/main` is `main`; `feature/main` is not."""
+    assert guard.blocks("git push origin HEAD:refs/heads/main") is not None
+    assert guard.blocks("git push origin +refs/heads/main") is not None
+    assert guard.blocks("git push origin feature/main") is None
