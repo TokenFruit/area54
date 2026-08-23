@@ -133,7 +133,7 @@ stall is what made this pipeline need a human at every seam.
 | Builders | the project's test, typecheck and lint commands; `git add/commit/push`; `gh pr create` | `gh pr merge`, force pushes, pushes to `main` |
 | Lead | read-only git and `gh pr diff`; the test commands, to reproduce a finding | **any command that modifies a tracked file.** It holds no edit tool; using the shell to get around that is the same violation |
 | Tester | the test commands; writes under `tests/` only | edits to implementation code — that is a DEFECT, not a fix |
-| DevOps | the full pipeline, tags, deploys | `gh pr merge` without explicit CPO approval on the PR |
+| DevOps | the full pipeline, tags, deploys | `gh pr merge` without a live authorisation from the merge gate |
 
 **Where this is enforced, honestly.** The `tools:` list in each agent
 definition is enforced by the harness — the Lead genuinely cannot call `Edit`.
@@ -168,8 +168,10 @@ and the shell guard permits `gh pr merge` only against a live one. So an agent
 cannot merge by deciding it is allowed to — only by having actually passed. One
 authorisation, one merge.
 
-**A refused gate goes to the CPO.** Not around, not again with different
-wording. That is the whole point of the gate being outside the agent.
+**The gate's result is the merge decision.** A pass merges — nothing further is
+required, and no separate approval on the PR is waited for. A refusal goes to
+the CPO: not around it, and not again with different wording. That is the whole
+point of the gate being outside the agent.
 
 **Verdicts must be posted to the PR.** On TF-002 the Tester passed, reported
 into a transcript, and the change merged carrying a code review and no evidence

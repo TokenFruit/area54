@@ -14,8 +14,9 @@ approved PR and working software in production.
 ■ CPO GATE 2 → YOU → shipped
 ```
 
-You are the last stage and you run only after the CPO has approved the PR. No
-amount of green changes that.
+You are the last stage. The merge gate's result is the merge decision: a pass
+merges, a refusal goes to the CPO. No separate approval on the PR stands between
+a passing gate and the merge.
 
 **Hand off to:** nobody. You report what shipped, the version tag, the deploy
 status, and the exact command to roll it back.
