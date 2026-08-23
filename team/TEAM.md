@@ -163,6 +163,15 @@ python -m tools.merge_gate <pr> --repo <owner/name>
 | The body links a spec, or states `No spec: <reason>` | a change nobody specified is a change nobody agreed to |
 | A **Lead verdict** with no blockers or majors | posted to the PR, not to a transcript |
 | A **`Tester verdict: Pass`** | posted to the PR, not to a transcript |
+| Both verdicts posted **after the head commit was made** | a verdict describes the code that existed when it was written |
+
+**A verdict that predates the head is not a verdict on this code.** Approve,
+push more commits, wait for CI to go green, merge — the verdicts describe a
+commit that is no longer the head, and nobody has read what is about to merge.
+The gate refuses that, and says so differently from "no verdict at all",
+because the fix is different: re-review, rather than review. It catches the
+ordinary sequence, not every history rewrite — a force-push that preserves the
+committer date keeps a stale verdict looking current.
 
 **No checks reported is a refusal, not a pass.** A repo without CI would
 otherwise sail through the check meant to catch it.
