@@ -243,9 +243,14 @@ def fetch_comments(pr: int, repo: str) -> list[dict[str, str]]:
 
     The timestamp is what makes a stalled handoff visible: changes requested
     with no commit after them is a defect nobody picked up.
+
+    Paginated, because the page-one default is 30 and this fails *open*: a
+    verdict that is not fetched is a verdict missing, and a missing verdict
+    dispatches the role that already posted it. It posts number 32, which is not
+    fetched either, and `--run` re-dispatches for as long as anyone runs it.
     """
-    comments = json.loads(_gh(["api", f"repos/{repo}/issues/{pr}/comments"]))
-    reviews = json.loads(_gh(["api", f"repos/{repo}/pulls/{pr}/reviews"]))
+    comments = json.loads(_gh(["api", "--paginate", f"repos/{repo}/issues/{pr}/comments"]))
+    reviews = json.loads(_gh(["api", "--paginate", f"repos/{repo}/pulls/{pr}/reviews"]))
     return [
         {"body": str(c.get("body") or ""), "at": str(c.get("created_at") or "")} for c in comments
     ] + [

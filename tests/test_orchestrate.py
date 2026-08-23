@@ -25,6 +25,7 @@ from tools.orchestrate import (
     ci_state,
     dispatch,
     fetch,
+    fetch_comments,
     in_flight,
     latest_commit,
     latest_verdict,
@@ -535,6 +536,22 @@ def test_a_paused_item_still_has_its_stalls_named() -> None:
     assert next_action(paused).kind == "wait"
     assert stalls(paused) == ["CI green and open for review, but no Lead or Tester verdict"]
     assert in_flight([paused]) == [paused]
+
+
+def test_every_comment_is_asked_for_not_the_first_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Page one holds 30. The 31st verdict going unread re-dispatches for ever."""
+    asked: list[list[str]] = []
+
+    def gh(args: list[str]) -> str:
+        asked.append(args)
+        return "[]"
+
+    monkeypatch.setattr(orchestrate, "_gh", gh)
+    assert fetch_comments(29, "TokenFruit/area54") == []
+    assert asked == [
+        ["api", "--paginate", "repos/TokenFruit/area54/issues/29/comments"],
+        ["api", "--paginate", "repos/TokenFruit/area54/pulls/29/reviews"],
+    ]
 
 
 def test_a_merged_pr_is_read_off_its_branch_like_an_open_one(
