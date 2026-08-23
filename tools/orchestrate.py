@@ -164,9 +164,14 @@ def fetch(repo: str, root: Path = REPO_ROOT) -> list[Item]:
     prs: dict[str, dict[str, object]] = {}
     loose: list[dict[str, object]] = []
     fields = "number,url,title,body,isDraft,headRefName,headRefOid,statusCheckRollup,commits"
-    for pr in json.loads(_gh(["pr", "list", "--repo", repo, "--state", "open", "--json", fields])):
+    listed_prs = _gh(["pr", "list", "--repo", repo, "--state", "open", "--json", fields])
+    for pr in sorted(json.loads(listed_prs), key=lambda p: int(p["number"]), reverse=True):
         pr["comments"] = fetch_comments(int(pr["number"]), repo)
-        if key := owning_item(pr):
+        # The highest number wins the item: it is the newest PR on it. The older
+        # one is not dropped — last-write-wins over `gh pr list` order lost a
+        # whole PR, and any stall on it, without printing a line. It gets a row
+        # of its own, exactly as a PR that names no item does.
+        if (key := owning_item(pr)) and key not in prs:
             prs[key] = pr
         else:
             loose.append(pr)

@@ -8,10 +8,13 @@ from fetching, so none of this touches a live `gh`.
 
 from __future__ import annotations
 
+import json
+import subprocess
 from pathlib import Path
 
 import pytest
 
+from tools import orchestrate
 from tools.merge_gate import check_ci_green
 from tools.orchestrate import (
     UNDATEABLE,
@@ -21,6 +24,7 @@ from tools.orchestrate import (
     adr_items,
     ci_state,
     dispatch,
+    fetch,
     in_flight,
     latest_commit,
     latest_verdict,
@@ -406,6 +410,53 @@ def test_a_stall_on_a_pr_that_owns_no_item_is_still_named() -> None:
     )
     assert in_flight([chore]) == [chore]
     assert stalls(chore) == ["CI green and open for review, but no Lead or Tester verdict"]
+
+
+# --- fetch: the half that reads the world ------------------------------------
+
+
+def fetched(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    open_prs: list[dict[str, object]] | None = None,
+    branches: str = "",
+) -> list[Item]:
+    """`fetch` over a stubbed `gh` and `git`. No process is started."""
+
+    def gh(args: list[str]) -> str:
+        if args[:2] == ["pr", "list"]:
+            return json.dumps(open_prs or [])
+        return "[]"
+
+    def git(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess([], 0, stdout=branches, stderr="")
+
+    monkeypatch.setattr(orchestrate, "_gh", gh)
+    monkeypatch.setattr(orchestrate.subprocess, "run", git)
+    return fetch("TokenFruit/area54", tmp_path)
+
+
+def test_a_second_pr_on_one_item_keeps_a_row_of_its_own(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Last-write-wins dropped one of them, and every stall on it with it."""
+    items = fetched(
+        monkeypatch,
+        tmp_path,
+        [
+            {"number": 29, "headRefName": "tf-021-orchestrator", "body": ""},
+            {"number": 31, "headRefName": "tf-021-deploy-the-gate", "body": ""},
+        ],
+    )
+    owned = {i.tf: i.pr.get("number") for i in items}
+    assert owned == {"TF-021": 31, "tf-021-orchestrator": 29}
+
+
+def test_one_pr_on_an_item_is_the_item_s_pr(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    items = fetched(monkeypatch, tmp_path, [{"number": 29, "headRefName": "tf-021-x", "body": ""}])
+    assert [(i.tf, i.pr.get("number")) for i in items] == [("TF-021", 29)]
 
 
 # --- which ADR belongs to which item -----------------------------------------
