@@ -138,7 +138,7 @@ def fetch(repo: str, root: Path = REPO_ROOT) -> list[Item]:
 
     prs: dict[str, dict[str, object]] = {}
     loose: list[dict[str, object]] = []
-    fields = "number,url,title,body,isDraft,headRefName,statusCheckRollup,commits"
+    fields = "number,url,title,body,isDraft,headRefName,headRefOid,statusCheckRollup,commits"
     for pr in json.loads(_gh(["pr", "list", "--repo", repo, "--state", "open", "--json", fields])):
         pr["comments"] = fetch_comments(int(pr["number"]), repo)
         if key := owning_item(pr):
@@ -212,32 +212,70 @@ VERDICTS: dict[str, tuple[re.Pattern[str], ...]] = {
 }
 
 
-def latest_verdict(pr: dict[str, object], role: str) -> dict[str, str] | None:
-    """The most recent verdict *role* posted to the PR, or None."""
-    raw = pr.get("comments", [])
-    comments = [c for c in raw if isinstance(c, dict)] if isinstance(raw, list) else []
-    found = [c for c in comments if any(p.search(c["body"]) for p in VERDICTS[role])]
-    return found[-1] if found else None
-
-
-def missing_verdicts(pr: dict[str, object]) -> list[str]:
-    """The roles that have posted no verdict to the PR."""
-    return [role for role in VERDICTS if latest_verdict(pr, role) is None]
+#: Sorts after any ISO-8601 timestamp, so a head that cannot be dated makes
+#: every verdict stale. The gate refuses such a PR outright; refusing here means
+#: sending it back for a review that can be dated.
+UNDATEABLE = "9999"
 
 
 def latest_commit(pr: dict[str, object]) -> str:
-    """The most recent commit timestamp: ISO-8601 UTC, so ordering is a string compare."""
+    """When the head commit was made: ISO-8601 UTC, so ordering is a string compare.
+
+    Matched by SHA where the PR reports one, as `tools/merge_gate.py` dates the
+    head; the newest `committedDate` otherwise, which is that same commit on any
+    history the gate would accept.
+    """
     raw = pr.get("commits")
     commits = [c for c in raw if isinstance(c, dict)] if isinstance(raw, list) else []
-    return max((str(c.get("committedDate") or "") for c in commits), default="")
+    if not commits:
+        return UNDATEABLE
+    head = str(pr.get("headRefOid") or "")
+    matched = [c for c in commits if str(c.get("oid") or "") == head] if head else []
+    return max((str(c.get("committedDate") or "") for c in (matched or commits)), default=UNDATEABLE)
+
+
+def latest_verdict(pr: dict[str, object], role: str) -> dict[str, str] | None:
+    """The most recent verdict *role* posted about the current head, or None.
+
+    Ordered by `at` rather than by list order: `fetch_comments` returns every
+    issue comment and then every review, so the two interleave in time and the
+    last of the list is not the latest.
+
+    A verdict counts only if it was posted strictly after the head commit was
+    made. An equal timestamp is stale — GitHub stamps to the second, and a
+    verdict sharing the commit's second may have been written just before it.
+    That is `tools/merge_gate.py`'s rule on the same evidence: approve, push,
+    wait for green, merge what nobody read is the sequence both refuse.
+    """
+    raw = pr.get("comments", [])
+    head = latest_commit(pr)
+    posted = sorted(
+        (
+            {"body": str(c.get("body") or ""), "at": str(c.get("at") or "")}
+            for c in (raw if isinstance(raw, list) else [])
+            if isinstance(c, dict)
+        ),
+        key=lambda c: c["at"],
+    )
+    fresh = [
+        c for c in posted if c["at"] > head and any(p.search(c["body"]) for p in VERDICTS[role])
+    ]
+    return fresh[-1] if fresh else None
+
+
+def missing_verdicts(pr: dict[str, object]) -> list[str]:
+    """The roles that have posted no verdict covering the PR's head commit."""
+    return [role for role in VERDICTS if latest_verdict(pr, role) is None]
 
 
 def changes_requested(pr: dict[str, object]) -> bool:
-    """Whether the latest Lead verdict asks for changes and nothing has moved."""
+    """Whether the latest Lead verdict on this head asks for changes.
+
+    A verdict the head commit postdates is not returned at all, so the defect
+    loop leaves on a commit exactly as it did before.
+    """
     verdict = latest_verdict(pr, "Lead")
-    if verdict is None or LEAD_APPROVE.search(verdict["body"]):
-        return False
-    return latest_commit(pr) <= verdict["at"]
+    return verdict is not None and not LEAD_APPROVE.search(verdict["body"])
 
 
 def stalls(item: Item) -> list[str]:

@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from tools.orchestrate import (
+    UNDATEABLE,
     Action,
     Item,
     OrchestratorError,
@@ -20,6 +21,9 @@ from tools.orchestrate import (
     ci_state,
     dispatch,
     in_flight,
+    latest_commit,
+    latest_verdict,
+    missing_verdicts,
     next_action,
     owning_item,
     roadmap_done,
@@ -136,6 +140,65 @@ def test_a_commit_after_the_verdict_moves_the_loop_on() -> None:
     )
     assert not changes_requested(fixed)
     assert next_action(item(pr=fixed)).stage == "In review"
+
+
+def test_a_verdict_the_head_commit_postdates_is_not_a_verdict() -> None:
+    """The other direction of the same rule: approve, push, go green, ship unread."""
+    unreviewed = pr(commits=[{"committedDate": "2026-08-24T11:00:00Z"}])
+    assert missing_verdicts(unreviewed) == ["Lead", "Tester"]
+    assert next_action(item(pr=unreviewed)).agent == "lead"
+    assert stalls(item(pr=unreviewed)) == [
+        "CI green and open for review, but no Lead or Tester verdict"
+    ]
+
+
+def test_a_verdict_in_the_commit_s_own_second_is_stale() -> None:
+    """GitHub stamps to the second, and ambiguous is never a pass. The gate's rule."""
+    same = pr(commits=[{"committedDate": "2026-08-24T10:05:00Z"}])
+    assert missing_verdicts(same) == ["Lead", "Tester"]
+
+
+def test_the_head_commit_is_the_one_the_sha_names() -> None:
+    """`gh` lists the PR's commits; the gate dates the head by SHA, so this does too."""
+    rebased = pr(
+        headRefOid="cafe1234",
+        commits=[
+            {"oid": "cafe1234", "committedDate": "2026-08-24T09:00:00Z"},
+            {"oid": "beef5678", "committedDate": "2026-08-24T12:00:00Z"},
+        ],
+    )
+    assert latest_commit(rebased) == "2026-08-24T09:00:00Z"
+    assert missing_verdicts(rebased) == []
+
+
+def test_a_pr_whose_head_cannot_be_dated_has_no_current_verdict() -> None:
+    """Undateable is not fresh. The gate refuses; here the PR goes back for review."""
+    assert latest_commit(pr(commits=[])) == UNDATEABLE
+    assert missing_verdicts(pr(commits=[])) == ["Lead", "Tester"]
+
+
+def test_the_latest_verdict_is_the_latest_by_time_not_by_list_order() -> None:
+    """Issue comments are fetched before reviews, so list order is not time order."""
+    reordered = pr(
+        comments=[
+            {"body": LEAD_OK, "at": "2026-08-24T12:00:00Z"},
+            {"body": LEAD_NO, "at": "2026-08-24T09:30:00Z"},
+        ]
+    )
+    assert not changes_requested(reordered)
+    verdict = latest_verdict(reordered, "Lead")
+    assert verdict is not None and verdict["at"] == "2026-08-24T12:00:00Z"
+
+
+def test_an_approval_that_predates_the_latest_rejection_does_not_hide_it() -> None:
+    later_rejection = pr(
+        comments=[
+            {"body": LEAD_NO, "at": "2026-08-24T12:00:00Z"},
+            {"body": LEAD_OK, "at": "2026-08-24T09:30:00Z"},
+        ]
+    )
+    assert changes_requested(later_rejection)
+    assert next_action(item(pr=later_rejection)).stage == "Defect loop"
 
 
 def test_a_green_draft_is_marked_ready() -> None:
