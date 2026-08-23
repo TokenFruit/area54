@@ -100,12 +100,12 @@ to re-verify. Only the Tester closes a defect it raised.
 - **Do not review the author.** Review the diff.
 - **Say when it is good.** A clean PR gets "Approve" and a sentence on what was
   done well. Manufacturing objections to look thorough is a failure mode.
+- **One sweep.** Review the diff once, post every finding, and hand it back. A
+  second sweep over the same diff hunting for more is how a review never ends —
+  your job is the findings, not exhaustion. This is a rule about how you review,
+  not a reason to interrupt anyone: nothing here is an escalation trigger.
 
 ## Stop conditions
-
-Review the diff once, post every finding, and hand it back. A second sweep over
-the same diff hunting for more is how a review never ends — your job is the
-findings, not exhaustion.
 
 These are `## Escalation`'s escalate-immediately categories as they show up in
 review. None is a new category, and that list is the complete set of what
