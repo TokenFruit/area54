@@ -27,7 +27,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tools.agents import cli_invocation, load_agents
+from tools.agents import cli_invocation, load_agents, session_id
 from tools.merge_gate import (
     LEAD_APPROVE,
     LEAD_COUNTS,
@@ -524,7 +524,9 @@ def dispatch(action: Action, item: Item, repo: str) -> list[str]:
         agent = next((a for a in load_agents() if a.name == action.agent), None)
         if agent is None:
             raise OrchestratorError(f"no agent definition named '{action.agent}'.")
-        argv = cli_invocation(agent, action.prompt)
+        # Same role, same item, same conversation. A review round after the
+        # first rejoins the one before it rather than starting cold.
+        argv = cli_invocation(agent, action.prompt, session=session_id(repo, item.tf, agent.name))
     else:
         raise OrchestratorError(
             f"'{action.kind}' is not dispatchable: {action.blocked_on}. This one is the CPO's."

@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from tools import orchestrate
+from tools.agents import session_id
 from tools.merge_gate import check_ci_green
 from tools.orchestrate import (
     UNDATEABLE,
@@ -463,7 +464,7 @@ def test_the_guard_refuses_anything_that_is_not_one_of_the_two_shapes(
     case-sensitive, so uppercase, a subcommand prefix, a flag and a shell all
     walked through a guard the docstrings credited with stopping merges.
     """
-    monkeypatch.setattr(orchestrate, "cli_invocation", lambda agent, prompt: argv)
+    monkeypatch.setattr(orchestrate, "cli_invocation", lambda *a, **k: argv)
     action = next_action(item(has_adr=False))
     with pytest.raises(OrchestratorError, match="only `gh pr ready`"):
         dispatch(action, item(), "TokenFruit/area54")
@@ -471,7 +472,7 @@ def test_the_guard_refuses_anything_that_is_not_one_of_the_two_shapes(
 
 def test_the_guard_lets_an_agent_invocation_through(monkeypatch: pytest.MonkeyPatch) -> None:
     """The passing direction, so the guard cannot be tightened into refusing everything."""
-    monkeypatch.setattr(orchestrate, "cli_invocation", lambda agent, prompt: ["claude", "-p", "x"])
+    monkeypatch.setattr(orchestrate, "cli_invocation", lambda *a, **k: ["claude", "-p", "x"])
     argv = dispatch(next_action(item(has_adr=False)), item(), "TokenFruit/area54")
     assert argv == ["claude", "-p", "x"]
 
@@ -737,3 +738,18 @@ def test_a_branch_left_behind_by_a_merge_is_not_work() -> None:
     """A merged PR's branch carries a TF number and nothing else. Not in flight."""
     stale = item(spec_status=None, pr={})
     assert in_flight([stale]) == []
+
+
+def test_a_dispatched_agent_is_given_its_own_session() -> None:
+    """TF-022: the same role on the same item rejoins its own conversation."""
+    argv = dispatch(next_action(item(has_adr=False)), item(has_adr=False), "TokenFruit/area54")
+    assert argv[-2] in {"--session-id", "--resume"}
+    assert argv[-1] == session_id("TokenFruit/area54", "TF-021", "architect")
+
+
+def test_two_roles_on_one_item_do_not_share_a_session() -> None:
+    """A Lead resuming the Tester's session would read its own review back as fact."""
+    awaiting_lead = item(pr=pr(comments=[{"body": TESTER_OK, "at": "2026-08-24T10:05:00Z"}]))
+    argv = dispatch(next_action(awaiting_lead), awaiting_lead, "TokenFruit/area54")
+    assert argv[-1] == session_id("TokenFruit/area54", "TF-021", "lead")
+    assert argv[-1] != session_id("TokenFruit/area54", "TF-021", "tester")
