@@ -47,14 +47,18 @@ nowhere else:
   │             └───────────── until clean, or stuck twice ──┘
   │
   └─ PR opened, CI green ──────────────────────────→ ■ CPO GATE 2
-                                                     (approve, then /ship)
+                                                     (approve, then /ship —
+                                                      the gate merges)
 ```
 
 **Gate 1 — after the spec.** Is this the right thing to build? Open questions
 are the gate: the team never answers them for the CPO and never proceeds on an
 assumption.
 
-**Gate 2 — before merge.** Is this good enough to ship? Only the CPO merges.
+**Gate 2 — before merge.** Is this good enough to ship? The CPO approves the
+work and runs `/ship`; from there the **merge gate** decides, and a passing gate
+merges. Nobody waits for a second approval on the PR, and no agent merges
+because it judged itself ready. See `## The merge gate`.
 
 **Between the gates, the team does not ask.** Findings, defects, failing tests
 and contradictions between an ADR and a design are the team's work, not the
