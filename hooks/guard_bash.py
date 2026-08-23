@@ -18,7 +18,7 @@ import re
 import shlex
 import sys
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 PROTECTED_BRANCHES = {"main", "master", "trunk"}
 
@@ -35,18 +35,66 @@ def _tokens(command: str) -> list[str]:
         return command.split()
 
 
+#: Everything that can start a new command inside one string. The first version
+#: of this split on `&& || ; \n` and required the protected word at the front of
+#: a part — which is the *same* hole as the prefix matcher this module was
+#: written to replace, one level down. `true | git push origin main` and
+#: `bash -c "git push origin main"` both ran.
+_SEPARATORS = re.compile(r"&&|\|\||[;|\n()`]|\$\(")
+
+#: Shells that take a command as an argument. Their payload is a command, so it
+#: is split and checked like any other rather than read as an opaque string.
+_NESTED_SHELLS = ("bash", "sh", "zsh", "dash", "ksh", "env")
+
+
 def blocks(command: str) -> str | None:
-    """Return why *command* is refused, or None to allow it."""
-    # A compound command hides its parts from a prefix matcher; check each.
-    for part in re.split(r"&&|\|\||;|\n", command):
-        reason = _blocks_single(part.strip())
+    """Return why *command* is refused, or None to allow it.
+
+    A compound command hides its parts from a prefix matcher, so every part is
+    checked — and a part that is itself a shell invocation is unwrapped and its
+    payload checked too, to whatever depth it nests.
+    """
+    return _blocks_command(command, depth=0)
+
+
+def _blocks_command(command: str, depth: int) -> str | None:
+    if depth > 4:  # A nesting this deep is not a quoting workaround.
+        return "refusing a command nested more than four shells deep: it cannot be read."
+    for part in _SEPARATORS.split(command):
+        part = part.strip()
+        reason = _blocks_single(part)
+        if reason:
+            return reason
+        reason = _blocks_nested_shell(part, depth)
         if reason:
             return reason
     return None
 
 
+def _blocks_nested_shell(part: str, depth: int) -> str | None:
+    """Check the payload of `sh -c "..."` and friends as a command in its own right."""
+    tokens = _tokens(part)
+    if not tokens or PurePosixPath(tokens[0]).name not in _NESTED_SHELLS:
+        return None
+    for index, token in enumerate(tokens[1:], start=1):
+        if token == "-c" and index + 1 < len(tokens):
+            return _blocks_command(tokens[index + 1], depth + 1)
+    # `env FOO=1 git push origin main` — the rest is a command too.
+    if PurePosixPath(tokens[0]).name == "env":
+        return _blocks_command(" ".join(tokens[1:]), depth + 1)
+    return None
+
+
+#: `FOO=1 git push origin main` is a plain shell prefix, and one `env FOO=1 …`
+#: reduces to. Stripping it here covers both, and covers the form written
+#: without `env` at all.
+_ASSIGNMENT = re.compile(r"^[A-Za-z_]\w*=")
+
+
 def _blocks_single(command: str) -> str | None:
     tokens = _tokens(command)
+    while tokens and _ASSIGNMENT.match(tokens[0]):
+        tokens = tokens[1:]
     if len(tokens) < 2:
         return None
 

@@ -17,6 +17,7 @@ Three things go wrong in this file and none were caught by a test:
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from dataclasses import dataclass
@@ -54,6 +55,19 @@ MUST_BE_BLOCKED = (
     "gh pr merge --admin 1",
     "git reset --hard HEAD~1",
     "npm test && git push -u origin main",
+    # Shapes that reached `git` without it being the first word of a part. The
+    # original splitter checked `&& || ; \n` and required the protected token at
+    # the front — the same hole as the prefix matcher this guard replaced, one
+    # level down. Every one of these ran.
+    "true | git push origin main",
+    "$(git push origin main)",
+    "`git push origin main`",
+    'bash -c "git push origin main"',
+    '/bin/sh -c "git push --force origin feature"',
+    'zsh -c "gh pr merge 1 --squash"',
+    "env FOO=1 git push origin main",
+    "FOO=1 git push origin main",
+    "bash -c \"bash -c 'git push origin main'\"",
 )
 
 #: Commands the team cannot work without. A guard that blocks these is broken
@@ -334,7 +348,12 @@ DEPLOYED_PATH_READERS: dict[str, str] = {
 #: A path under `.claude/` that a hook writes into whichever repo it runs in.
 #: Matched from the hook's source, so adding a new one is what triggers the
 #: check rather than remembering to register it.
-_WRITES_INTO_TARGET = re.compile(r"[\"\']((?:\.claude/)?[\w.-]+\.jsonl)[\"\']")
+#: Any mention of a log file in a hook. Deliberately not "a complete path
+#: between one pair of quotes": the natural way to write a rotating or dated log
+#: is `Path(".claude") / f"costs-{today}.jsonl"`, and that is exactly the shape
+#: a quoted-path pattern cannot see. Matching the extension over-reports at
+#: worst, and over-reporting here costs one registry line.
+_WRITES_INTO_TARGET = re.compile(r"([\w.{}<>*/-]*\.jsonl)")
 
 
 def check_deployed_paths_have_a_reader(root: Path = REPO_ROOT) -> list[str]:
@@ -352,7 +371,8 @@ def check_deployed_paths_have_a_reader(root: Path = REPO_ROOT) -> list[str]:
     for hook in sorted(hooks_dir.glob("*.py")):
         text = hook.read_text(encoding="utf-8")
         for match in _WRITES_INTO_TARGET.findall(text):
-            if match not in DEPLOYED_PATH_READERS:
+            normalised = match if match.startswith(".claude/") else f".claude/{match}"
+            if match not in DEPLOYED_PATH_READERS and normalised not in DEPLOYED_PATH_READERS:
                 failures.append(
                     f"{hook.name} writes {match} into every target repo, and "
                     f"DEPLOYED_PATH_READERS does not say what reads it. Half a feature: "
@@ -398,33 +418,88 @@ def check_agent_commands_are_deployed(root: Path = REPO_ROOT) -> list[str]:
     return failures
 
 
-#: The spelling of a tool that only resolves inside area54. A target repo has no
-#: `tools` package, so anything telling an agent to run one of these is telling
-#: it to fail — and the failure reads as the tool refusing rather than the
-#: instruction being wrong.
-AREA54_ONLY = "python -m tools."
+#: An instruction that resolves only inside area54: the `tools` package, by any
+#: spelling. `python -m tools.x`, `python3 -m tools.x`, `uv run -m tools.x` and
+#: `tools/x.py` all raise in a target repo, and the first fix here matched only
+#: the one string that had already been corrected — which is worth about as much
+#: as correcting the string.
+AREA54_ONLY = re.compile(r"\btools[./]\w+")
+
+#: What exempts a mention: saying which repo it applies to. Both surviving uses
+#: do — "In area54 itself you can also run…", "The reader lives in area54". The
+#: marker has to be on the match's own line or the one before it, so a mention
+#: at the far end of a file cannot launder an unscoped instruction.
+AREA54_SCOPED = "area54"
+
+#: Every directory the plugin carries whose contents are read as instructions in
+#: a target repo. `commands/` was the gap: the class was closed over hooks and
+#: agents, and left standing in the seven prompts nothing scanned.
+INSTRUCTION_DIRS = ("agents", "commands", "hooks")
 
 
-def check_hook_messages_name_a_command_that_exists(root: Path = REPO_ROOT) -> list[str]:
-    """Return failures for hook text telling an agent to run an area54-only tool.
+def _agent_facing_text(path: Path) -> str:
+    """Return the part of *path* an agent could read as an instruction.
 
-    A hook runs in the target repo, and what it prints is an instruction the
-    agent follows. The shell guard refused a merge and told the agent to run
-    `python -m tools.merge_gate` — correct here, `No module named tools` there,
-    at the one irreversible step in the pipeline.
-
-    :func:`check_agent_commands_are_deployed` could not have caught it: that one
-    reads agent prompts, and this was a string inside a hook.
+    All of a markdown prompt. For a hook, only its string literals: a comment
+    saying "must match tools/merge_gate.TOKEN_TTL_SECONDS" documents a constant
+    for whoever maintains the file, and never reaches an agent. Scanning the
+    whole source flags it, and a check that cries wolf about its own comments
+    gets its rule widened until it catches nothing.
     """
-    hooks_dir = root / "hooks"
-    if not hooks_dir.is_dir():
-        return []
-    return [
-        f"hooks/{hook.name}: names `{AREA54_ONLY}...`, which does not exist in a target "
-        f"repo. Hook output is an instruction the agent follows — name the bin/ command."
-        for hook in sorted(hooks_dir.glob("*.py"))
-        if AREA54_ONLY in hook.read_text(encoding="utf-8")
-    ]
+    text = path.read_text(encoding="utf-8")
+    if path.suffix != ".py":
+        return text
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:  # pragma: no cover - the file would fail CI first
+        return text
+    return "\n".join(
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    )
+
+
+def _unscoped_area54_references(text: str) -> list[str]:
+    """Return area54-only spellings in *text* that do not say so."""
+    lines = text.splitlines()
+    found = []
+    for number, line in enumerate(lines):
+        for match in AREA54_ONLY.findall(line):
+            context = line + (lines[number - 1] if number else "")
+            if AREA54_SCOPED not in context:
+                found.append(match)
+    return found
+
+
+def check_instructions_name_a_command_that_exists(root: Path = REPO_ROOT) -> list[str]:
+    """Return failures for shipped text telling an agent to run an area54-only tool.
+
+    Everything under `agents/`, `commands/` and `hooks/` travels to every target
+    repo and is read there as an instruction. There is no `tools` package in a
+    target, so naming one is telling the agent to fail — and the failure reads
+    as the tool refusing rather than the instruction being wrong.
+
+    Two live instances of this: the shell guard refused a merge and named
+    `python -m tools.merge_gate`, and `/status` told the agent to run
+    `python -m tools.telemetry` on a branch that is always taken, because the
+    plugin's own hook writes the file the branch tests for.
+
+    A mention is allowed when it says which repo it applies to. Two do.
+    """
+    failures = []
+    for directory in INSTRUCTION_DIRS:
+        path = root / directory
+        if not path.is_dir():
+            continue
+        for shipped in sorted(path.glob("*.md")) + sorted(path.glob("*.py")):
+            for name in _unscoped_area54_references(_agent_facing_text(shipped)):
+                failures.append(
+                    f"{directory}/{shipped.name}: names `{name}`, which does not exist in a "
+                    f"target repo. This text is an instruction the agent follows — name the "
+                    f"bin/ command, or say that the spelling is for area54 itself."
+                )
+    return failures
 
 
 def check_agent_commands_are_permitted(settings: Settings, root: Path = REPO_ROOT) -> list[str]:
@@ -443,9 +518,19 @@ def check_agent_commands_are_permitted(settings: Settings, root: Path = REPO_ROO
     prompts = "\n".join(a.read_text(encoding="utf-8") for a in sorted(agents_dir.glob("*.md")))
     failures = []
     for entry in sorted(bin_dir.iterdir()):
-        if not entry.is_file() or entry.name not in prompts:
+        # In backticks, which is how every agent prompt spells a command to run.
+        # A bare substring test asks whether the *characters* appear anywhere, so
+        # a tool named `status` would fire on the words "to see status" and the
+        # remedy — add an allow rule — would widen the permission list on a
+        # coincidence.
+        if not entry.is_file() or f"`{entry.name}" not in prompts:
             continue
-        if not any(rule.startswith(f"Bash({entry.name}") for rule in settings.allow):
+        # The delimiter matters: without it `Bash(merge-gateway:*)` satisfies the
+        # check for `merge-gate` while permitting nothing.
+        if not any(
+            rule.startswith((f"Bash({entry.name})", f"Bash({entry.name} ", f"Bash({entry.name}:"))
+            for rule in settings.allow
+        ):
             failures.append(
                 f"settings.json: an agent is told to run `{entry.name}`, and no allow rule "
                 f"covers it. Prefix matching cannot reach it from any other rule, so a "
@@ -467,6 +552,6 @@ def validate(path: Path = SETTINGS_PATH) -> list[str]:
         *check_the_repo_installs_its_own_plugin(settings),
         *check_deployed_paths_have_a_reader(),
         *check_agent_commands_are_deployed(),
-        *check_hook_messages_name_a_command_that_exists(),
+        *check_instructions_name_a_command_that_exists(),
         *check_agent_commands_are_permitted(settings),
     ]

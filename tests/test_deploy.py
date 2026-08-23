@@ -371,3 +371,85 @@ def test_an_unregistered_name_is_not_reported(tmp_path: Path) -> None:
     registry.write_text(json.dumps({"someone-else": {"source": {"source": "npm"}}}), "utf-8")
     assert marketplace_collision(registry) is None
     assert marketplace_collision(tmp_path / "absent.json") is None
+
+
+# --- the manifest lives in the target, so it is not trusted input ---------
+
+
+def test_a_traversing_manifest_entry_cannot_delete_outside_the_target(tmp_path: Path) -> None:
+    """`.claude/TEAM_VERSION` is a file in the target, however it got there.
+
+    Demonstrated in review: `../victim.txt` in a manifest line was deleted, and
+    the rmdir walk then climbed *above* the target removing whatever it emptied,
+    because it stopped on equality with a directory it could never reach again.
+    Nothing outside the target is in its git repo, so nothing was recoverable.
+    """
+    victim = tmp_path / "victim.txt"
+    victim.write_text("not yours\n", encoding="utf-8")
+    victim_dir = tmp_path / "victimdir"
+    victim_dir.mkdir()
+    (victim_dir / "only.txt").write_text("nor this\n", encoding="utf-8")
+
+    target = make_repo(tmp_path)
+    (target / ".claude").mkdir(exist_ok=True)
+    (target / VERSION_FILE).write_text(
+        "# installed from area54 @ deadbee\n"
+        "deadbeef ../victim.txt\n"
+        "cafebabe ../victimdir/only.txt\n",
+        encoding="utf-8",
+    )
+    commit_all(target)
+
+    assert [c.path for c in plan(target) if c.kind.startswith("superseded")] == []
+    install(target)
+
+    assert victim.is_file(), "deleted a file outside the target"
+    assert (victim_dir / "only.txt").is_file()
+    assert victim_dir.is_dir(), "removed a directory outside the target"
+
+
+def test_an_absolute_manifest_entry_is_refused(tmp_path: Path) -> None:
+    outside = tmp_path / "elsewhere.txt"
+    outside.write_text("mine\n", encoding="utf-8")
+    target = make_repo(tmp_path)
+    (target / ".claude").mkdir(exist_ok=True)
+    (target / VERSION_FILE).write_text(f"deadbeef {outside}\n", encoding="utf-8")
+    commit_all(target)
+
+    install(target)
+    assert outside.is_file()
+
+
+def test_the_target_root_itself_is_never_removed(tmp_path: Path) -> None:
+    target = make_repo(tmp_path)
+    (target / ".claude").mkdir(exist_ok=True)
+    (target / VERSION_FILE).write_text("deadbeef .\n", encoding="utf-8")
+    commit_all(target)
+
+    install(target)
+    assert target.is_dir()
+
+
+def test_a_superseded_file_the_target_edited_is_not_destroyed_silently(tmp_path: Path) -> None:
+    """ "We refuse to discard your edit" and "we discard it silently" should not
+    both be true of one command."""
+    target = make_old_target(tmp_path)
+    lead = target / ".claude" / "agents" / "lead.md"
+    lead.write_text("we customised this\n", encoding="utf-8")
+    commit_all(target)
+
+    assert any(c.kind == "superseded-edited" for c in plan(target))
+    with pytest.raises(DeployError, match="edited in the target"):
+        install(target)
+    assert lead.is_file()
+
+    install(target, force=True)
+    assert not lead.exists()
+
+
+def test_the_collision_warning_survives_as_one_annotation() -> None:
+    """`::warning::` is parsed up to the first newline; the remedy fell out."""
+    from tools.deploy import _one_line
+
+    assert "\n" not in _one_line("first line\nsecond line")
+    assert "%0A" in _one_line("first line\nsecond line")

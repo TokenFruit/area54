@@ -373,28 +373,73 @@ def test_a_merge_authorisation_is_never_tracked() -> None:
 # --- what a hook tells an agent to run, in a target repo ------------------
 
 
-def test_the_guard_names_a_command_that_exists_in_a_target() -> None:
-    """The blocker: the guard refused a merge and named `python -m tools...`.
+def test_nothing_shipped_names_a_command_that_exists_only_here() -> None:
+    """Found twice: the guard's merge refusal, then `/status`.
 
-    There is no `tools` package in a target repo. devops would run it, get
-    `No module named tools`, and read the failure as the gate refusing.
+    There is no `tools` package in a target repo. The first fix closed the class
+    over hooks and agents and left it standing in the seven `commands/` prompts,
+    where `/status` reached it on a branch that is *always* taken — the plugin's
+    own hook writes the telemetry file the branch tests for.
     """
-    from tools.settings import check_hook_messages_name_a_command_that_exists
+    from tools.settings import check_instructions_name_a_command_that_exists
 
-    assert check_hook_messages_name_a_command_that_exists() == []
+    assert check_instructions_name_a_command_that_exists() == []
 
 
-def test_a_hook_naming_an_area54_only_tool_is_caught(tmp_path: Path) -> None:
-    from tools.settings import check_hook_messages_name_a_command_that_exists
+@pytest.mark.parametrize(
+    ("directory", "name", "body"),
+    [
+        ("hooks", "guard.py", 'print("Run `python -m tools.merge_gate 1` first.")'),
+        ("hooks", "guard.py", 'print("Run `python3 -m tools.merge_gate 1` first.")'),
+        ("hooks", "guard.py", 'print("Run `uv run -m tools.orchestrate next` first.")'),
+        ("hooks", "guard.py", 'print("Run `tools/merge_gate.py 1` first.")'),
+        ("commands", "status.md", "Run `python -m tools.telemetry` and show the last run."),
+        ("agents", "devops.md", "Run `python3 -m tools.merge_gate <pr>` before merging."),
+    ],
+)
+def test_each_area54_only_spelling_is_caught(
+    directory: str, name: str, body: str, tmp_path: Path
+) -> None:
+    """The first fix matched one literal string — the one already corrected.
 
-    hooks = tmp_path / "hooks"
-    hooks.mkdir()
-    (hooks / "guard.py").write_text(
-        'print("Run `python -m tools.merge_gate 1 --repo x/y` first.")\n', encoding="utf-8"
-    )
-    failures = check_hook_messages_name_a_command_that_exists(tmp_path)
-    assert len(failures) == 1
+    `python3` is the likeliest of these rather than the contrived one:
+    `bin/merge-gate` execs `python3` itself.
+    """
+    from tools.settings import check_instructions_name_a_command_that_exists
+
+    (tmp_path / directory).mkdir()
+    (tmp_path / directory / name).write_text(body + "\n", encoding="utf-8")
+    failures = check_instructions_name_a_command_that_exists(tmp_path)
+    assert len(failures) == 1, failures
     assert "does not exist in a target repo" in failures[0]
+
+
+def test_a_mention_that_says_which_repo_it_applies_to_is_allowed(tmp_path: Path) -> None:
+    """Two shipped mentions are correct because they scope themselves."""
+    from tools.settings import check_instructions_name_a_command_that_exists
+
+    (tmp_path / "agents").mkdir()
+    (tmp_path / "agents" / "devops.md").write_text(
+        "Run `merge-gate <pr>`.\n\n*(In area54 itself, that is\n"
+        "`python -m tools.merge_gate <pr>`.)*\n",
+        encoding="utf-8",
+    )
+    assert check_instructions_name_a_command_that_exists(tmp_path) == []
+
+
+def test_a_hook_comment_is_not_an_instruction(tmp_path: Path) -> None:
+    """A comment documenting a constant never reaches an agent.
+
+    A check that cries wolf about its own source comments gets its rule widened
+    until it catches nothing.
+    """
+    from tools.settings import check_instructions_name_a_command_that_exists
+
+    (tmp_path / "hooks").mkdir()
+    (tmp_path / "hooks" / "guard.py").write_text(
+        "#: Must match tools/merge_gate.TOKEN_TTL_SECONDS.\nTTL = 600\n", encoding="utf-8"
+    )
+    assert check_instructions_name_a_command_that_exists(tmp_path) == []
 
 
 def test_the_guard_refusal_actually_names_the_bin_command() -> None:
@@ -412,6 +457,47 @@ def test_every_bin_tool_an_agent_is_told_to_run_is_permitted() -> None:
     from tools.settings import check_agent_commands_are_permitted
 
     assert check_agent_commands_are_permitted(load_settings(SETTINGS_PATH)) == []
+
+
+def test_prose_mentioning_a_tool_name_does_not_demand_a_permission(tmp_path: Path) -> None:
+    """`entry.name in prompts` asked whether the characters appear anywhere.
+
+    A tool named `status` fired on the words "to see status", and the remedy it
+    named — add an allow rule — widens the permission list on a coincidence.
+    """
+    from tools.settings import check_agent_commands_are_permitted
+
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "status").write_text("#!/bin/sh\n", encoding="utf-8")
+    (tmp_path / "agents").mkdir()
+    (tmp_path / "agents" / "devops.md").write_text("Read the board to see status.\n", "utf-8")
+    s = settings_from({"permissions": {"allow": [], "deny": []}}, tmp_path)
+    assert check_agent_commands_are_permitted(s, tmp_path) == []
+
+
+def test_a_longer_rule_name_does_not_satisfy_the_permission_check(tmp_path: Path) -> None:
+    """`Bash(merge-gateway:*)` permits nothing that `merge-gate` needs."""
+    from tools.settings import check_agent_commands_are_permitted
+
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "merge-gate").write_text("#!/bin/sh\n", encoding="utf-8")
+    (tmp_path / "agents").mkdir()
+    (tmp_path / "agents" / "devops.md").write_text("Run `merge-gate <pr>`.\n", "utf-8")
+    s = settings_from({"permissions": {"allow": ["Bash(merge-gateway:*)"]}}, tmp_path)
+    assert len(check_agent_commands_are_permitted(s, tmp_path)) == 1
+
+
+def test_a_dated_log_path_still_needs_a_reader(tmp_path: Path) -> None:
+    """The shape a quoted-path pattern cannot see is the shape a real log takes."""
+    from tools.settings import check_deployed_paths_have_a_reader
+
+    (tmp_path / "hooks").mkdir()
+    (tmp_path / "hooks" / "writer.py").write_text(
+        'LOG = Path(".claude") / f"costs-{today}.jsonl"\n', encoding="utf-8"
+    )
+    failures = check_deployed_paths_have_a_reader(tmp_path)
+    assert len(failures) == 1
+    assert "does not say what reads it" in failures[0]
 
 
 def test_an_unpermitted_bin_tool_is_caught(tmp_path: Path) -> None:

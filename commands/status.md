@@ -22,8 +22,10 @@ Then, separately and at the top, list **everything waiting on the CPO** — spec
 with open questions, PRs awaiting approval, decisions the team escalated. That
 list is the point of this command; put it first.
 
-Then, if `.claude/telemetry.jsonl` exists, run `python -m tools.telemetry` and
-show the last run: how long it took and which agents did the work. If it does
-not exist, say nothing about it — an absent log is not a finding.
+Then, if `.claude/telemetry.jsonl` exists, report the last run from it: how long
+it took and which agents did the work. Read the file; do not reach for a tool to
+read it for you. The reader lives in area54 (`python -m tools.telemetry <repo>`,
+run from there against this repo) and is not installed here. If the log does not
+exist, say nothing about it — an absent log is not a finding.
 
 Be brief. No commentary, no encouragement. Just the board.

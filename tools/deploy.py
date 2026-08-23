@@ -72,7 +72,7 @@ class Change:
     """One file the installer would write."""
 
     path: str
-    kind: str  # "new" | "update" | "unchanged" | "locally-edited" | "conflict"
+    kind: str  # new | update | unchanged | locally-edited | conflict | superseded[-edited]
 
 
 def plugin_manifest() -> dict[str, object]:
@@ -174,6 +174,16 @@ def marketplace_collision(registry: Path = KNOWN_MARKETPLACES) -> str | None:
     )
 
 
+def _one_line(message: str) -> str:
+    """Escape newlines for a GitHub Actions annotation.
+
+    `::warning::` is parsed up to the first newline, so a multi-line message
+    arrives as its first sentence with the remedy scattered into plain log text
+    below it — which is where the advice is needed and where nobody looks.
+    """
+    return message.replace("\n", "%0A")
+
+
 def source_version() -> str:
     """Return the area54 commit being deployed, or a marker if unknown."""
     try:
@@ -270,7 +280,13 @@ def plan(target: Path) -> list[Change]:
             changes.append(Change(rel, "locally-edited"))
         else:
             changes.append(Change(rel, "update"))
-    changes += [Change(rel, "superseded") for rel in superseded(target)]
+    for rel in superseded(target):
+        # The payload path refuses to overwrite a file the target edited, at
+        # length. A file that is going away deserves the same answer: "we refuse
+        # to discard your edit" and "we discard your edit silently" should not
+        # both be true of one command.
+        edited = manifest.get(rel) != _digest(target / rel)
+        changes.append(Change(rel, "superseded-edited" if edited else "superseded"))
     return changes
 
 
@@ -285,23 +301,52 @@ def superseded(target: Path) -> list[str]:
     TF-003 is for, so the migration is part of installing rather than a note in
     a README.
 
-    Only paths the recorded manifest claims are removed. Anything this installer
-    did not write is not ours to delete.
+    Only paths the recorded manifest claims are removed, and only paths that
+    resolve inside the target. Anything this installer did not write is not ours
+    to delete — and ``.claude/TEAM_VERSION`` lives in the target, so however it
+    got there it is not trusted input. A line reading ``../victim.txt`` would
+    otherwise escape, and the directory walk that follows would climb above the
+    target root removing whatever it emptied.
     """
     ours = set(read_manifest(target))
     current = {rel for _, rel in _file_contents()}
-    return sorted(rel for rel in ours - current if (target / rel).exists())
+    return sorted(rel for rel in ours - current if _contained(target, rel))
+
+
+def _contained(target: Path, rel: str) -> bool:
+    """Return whether *rel* names an existing file inside *target*.
+
+    Containment by resolved path, not by inspecting the string for ``..``:
+    a symlink, an absolute path and an encoded traversal all have to fail the
+    same test, and only resolution catches all three.
+    """
+    root = target.resolve()
+    path = (target / rel).resolve()
+    if path == root or root not in path.parents:
+        return False
+    return (target / rel).exists()
 
 
 def _prune(target: Path, paths: list[str]) -> None:
-    """Delete *paths* and any directory they leave empty."""
+    """Delete *paths* and any directory they leave empty.
+
+    Every path was checked by :func:`_contained` first, and the upward walk
+    stops by containment rather than by equality with the target — an equality
+    test cannot terminate on a parent that is already outside it.
+    """
+    root = target.resolve()
     for rel in paths:
         path = target / rel
         path.unlink(missing_ok=True)
         parent = path.parent
-        # Stop at the target itself; an empty `.claude/agents` still loads as a
-        # component directory, so the directory has to go too.
-        while parent != target and parent.is_dir() and not any(parent.iterdir()):
+        # An empty `.claude/agents` still loads as a component directory, so the
+        # directory has to go too — but never the target, and never above it.
+        while (
+            parent.resolve() != root
+            and root in parent.resolve().parents
+            and parent.is_dir()
+            and not any(parent.iterdir())
+        ):
             parent.rmdir()
             parent = parent.parent
 
@@ -320,7 +365,7 @@ def install(target: Path, force: bool = False) -> list[Change]:
             "re-run — or pass --force to replace them, which discards their contents."
         )
 
-    edited = [c for c in changes if c.kind == "locally-edited"]
+    edited = [c for c in changes if c.kind in ("locally-edited", "superseded-edited")]
     if edited and not force:
         raise DeployError(
             "these files were edited in the target since the last install:\n  "
@@ -329,7 +374,7 @@ def install(target: Path, force: bool = False) -> list[Change]:
             "redeploy, or pass --force to discard the local edits."
         )
 
-    _prune(target, [c.path for c in changes if c.kind == "superseded"])
+    _prune(target, [c.path for c in changes if c.kind.startswith("superseded")])
 
     for data, rel in _file_contents():
         dst = target / rel
@@ -383,7 +428,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {change.kind:15} {change.path}")
         collision = marketplace_collision()
         if collision:
-            print(f"::warning::{collision}")
+            print(f"::warning::{_one_line(collision)}")
         if not pending:
             print(f"{target.name} is up to date with area54 @ {source_version()}.")
             return 0
@@ -399,7 +444,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     collision = marketplace_collision()
     if collision:
-        print(f"\n::warning::{collision}")
+        print(f"\n::warning::{_one_line(collision)}")
     print(f"\nReview the diff and commit it in {target.name}.")
     return 0
 

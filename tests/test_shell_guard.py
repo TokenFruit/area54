@@ -114,3 +114,54 @@ def test_a_well_formed_payload_still_blocks(tmp_path: Path) -> None:
     )
     assert result.returncode == 2
     assert "refusing to push to 'main'" in result.stderr
+
+
+# --- the splitter must not reintroduce the prefix-matcher hole ------------
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "true | git push origin main",
+        "$(git push origin main)",
+        "`git push origin main`",
+        'bash -c "git push origin main"',
+        '/bin/sh -c "git push --force origin feature"',
+        'zsh -c "gh pr merge 1 --squash"',
+        "env FOO=1 git push origin main",
+        "FOO=1 git push origin main",
+        'cat x && bash -c "git push origin main"',
+    ],
+)
+def test_a_protected_command_is_refused_wherever_it_sits(command: str) -> None:
+    """The guard split on `&& || ; \\n` and required the word at the front.
+
+    That is the same hole as the permission prefix matcher this module was
+    written to replace, one level down — and `bash -c "..."` is not exotic, it
+    is what an agent reaches for when quoting gets in the way. Every one of
+    these ran before.
+    """
+    assert guard.blocks(command) is not None, command
+
+
+def test_a_nested_shell_running_something_harmless_is_allowed() -> None:
+    """Unwrapping must not turn every nested shell into a refusal."""
+    assert guard.blocks('bash -c "npm test"') is None
+    assert guard.blocks('sh -c "git push -u origin feature/x"') is None
+
+
+def test_two_levels_of_real_nesting_are_still_read() -> None:
+    """Alternating quotes is how nesting is actually written."""
+    assert guard.blocks("""bash -c 'bash -c "git push origin main"'""") is not None
+    assert guard.blocks("""bash -c 'bash -c "npm test"'""") is None
+
+
+def test_the_depth_cap_refuses_rather_than_gives_up() -> None:
+    """A backstop, tested at the mechanism rather than through a quoted string.
+
+    Shell quoting does not nest by repetition — `bash -c "bash -c "x""` is not
+    two levels — so the cap cannot be reached by piling on quotes. It exists so
+    that a shape which *does* recurse ends in a refusal rather than in a return
+    to allowed.
+    """
+    assert guard._blocks_command("npm test", depth=5) is not None
