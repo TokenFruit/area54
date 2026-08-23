@@ -31,3 +31,9 @@ coverage/
 
 # Pipeline telemetry — local, per-checkout
 .claude/telemetry.jsonl
+
+# Merge authorisations — written by tools/merge_gate.py on a pass, read by
+# .claude/hooks/guard_bash.py to permit exactly one `gh pr merge`. Short-lived
+# and machine-local by design. Committing one would put a merge permit in the
+# repo and deploy it to every target, so it is never tracked.
+.claude/merge-authorisation.json
