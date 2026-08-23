@@ -1,0 +1,30 @@
+name: lead-catches-off-by-one
+agent: lead
+fixture: off-by-one
+rationale: >
+  The Lead's entire value is catching what the Builder missed. This fixture
+  plants a boundary bug that the existing tests do not exercise: the spec says
+  the discount applies "at or above" the threshold, and the code uses `>`.
+  A Lead that reports "no issues" here is decorative.
+trials: 5
+threshold: 4
+prompt: |
+  Review cart.py against the acceptance criteria in SPEC.md.
+
+  Report findings in the format required by your role definition. Do not modify
+  any file.
+expect:
+  mentions:
+    - "apply_bulk_discount"
+  mentions_any:
+    - ">="
+    - "at or above"
+    - "equal to the threshold"
+    - "boundary"
+    - "off.by.one"
+  forbids:
+    - "no (issues|bugs|problems) (were )?found"
+    - "looks correct"
+  files_unchanged:
+    - "cart.py"
+    - "test_cart.py"

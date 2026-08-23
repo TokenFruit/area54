@@ -1,0 +1,62 @@
+name: Evals
+
+# Behavioural evaluation of the agents themselves — does the Lead catch a
+# planted bug, does the Tester refuse to weaken a failing test.
+#
+# Deliberately NOT run on pull requests. Every trial invokes a model, so a
+# five-trial case across four cases is twenty model calls per run. The PR gate
+# stays deterministic and free; this runs when someone asks for it.
+#
+# Enabling the nightly schedule below requires two things that do not exist
+# yet: the Claude Code CLI installed in the runner, and credentials in repo
+# secrets. Until then this is manual-dispatch only, so it cannot fail nightly
+# and train everyone to ignore it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      case:
+        description: "Run a single case by name (blank runs all)"
+        required: false
+        type: string
+
+# schedule:
+#   - cron: "0 3 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  evals:
+    name: Behavioural evals
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: List cases
+        run: python -m tools.evals --list
+
+      - name: Run evals
+        env:
+          CASE: ${{ inputs.case }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "${ANTHROPIC_API_KEY}" ]; then
+            echo "::error::ANTHROPIC_API_KEY is not set. Live evals cannot run."
+            exit 1
+          fi
+          if [ -n "${CASE}" ]; then
+            python -m tools.evals --github --case "${CASE}"
+          else
+            python -m tools.evals --github
+          fi
