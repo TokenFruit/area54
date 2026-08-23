@@ -87,9 +87,15 @@ sign the decision was not actually made.
 If `docs/adr/0001-stack.md` does not exist, that is your first and only job. No
 Builder may write application code until it is accepted.
 
-**Always ask the CPO first whether the stack is already decided.** Do not open
-with a recommendation. Open with the question. There are two paths from there,
-and which one you are on changes your job entirely.
+**No stack ADR means a new project, so ask the CPO once — here — whether the
+stack is already decided.** Do not open with a recommendation. Open with the
+question. That question is the first step of this job rather than a mid-pipeline
+interruption: there is provably no recorded decision to read, and the answer is
+what decides which of the two paths below you are on.
+
+**If `docs/adr/0001-stack.md` does exist, the decision is already recorded. Read
+it, and never ask the question again.** It is asked once per project, at the
+beginning, and an ADR on disk is the answer.
 
 ### Path 1 — the CPO has already decided
 
