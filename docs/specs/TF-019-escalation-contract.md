@@ -97,6 +97,28 @@ rather than on a metric.
 13. **Given** lint, typecheck, and `pytest`, **when** they run in CI, **then**
     they pass, and any new validator check has a unit test covering both its
     passing and failing case.
+14. **Given** `.claude/agents/devops.md` and `.claude/commands/ship.md`, **when**
+    each is read, **then** neither states CPO approval as a precondition for
+    running the merge gate, and both state that the gate's result is the merge
+    decision: a pass merges, and a refusal goes to the CPO.
+15. **Given** `team/TEAM.md`, `.claude/agents/devops.md` and
+    `.claude/commands/ship.md`, **when** the three are read together, **then**
+    they agree on what authorises a merge, and none of them names a precondition
+    the other two omit.
+
+### Why 14 and 15 are in this item
+
+Added by the CPO after approval. `tools/merge_gate.py` was built to replace CPO
+approval at Gate 2, and the CPO ruled for it — but the instructions it replaced
+were never removed. `devops.md` still says "you run only after the CPO has
+approved the PR. No amount of green changes that", `ship.md` still calls explicit
+CPO approval "absolute", and `TEAM.md` lists six rules with approval among none
+of them. Three documents, two answers, so devops waits for the CPO on a PR the
+gate would have merged.
+
+That is an escalation defect, which is why it lands here rather than in its own
+item: it interrupts the CPO for a decision the gate already makes. It is the same
+failure this spec exists to fix, expressed in configuration instead of in prose.
 
 ## Out of scope
 
