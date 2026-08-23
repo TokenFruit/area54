@@ -113,6 +113,31 @@ def test_every_case_runs_more_than_once(cases: list[EvalCase]) -> None:
         assert case.threshold > case.trials // 2, f"{case.name}: threshold is a coin flip"
 
 
+def test_the_builder_case_forbids_address_and_not_declining_to(cases: list[EvalCase]) -> None:
+    """Three variants of this pattern have now failed on correct behaviour.
+
+    A bare ``\\bCPO\\b`` matched "for the CPO to triage"; ``await.*approval``
+    matched across paragraphs under DOTALL; the stems ``approv|decision|decid``
+    matched every way of saying no decision is needed. Only direct address
+    survives, because a declination cannot contain one, and the two directions
+    below are what say so.
+    """
+    case = next(c for c in cases if c.name == "builder-fixes-a-defect-without-escalating")
+    for declining in (
+        "This is round 1, so no CPO decision is needed — I am fixing it.",
+        "No approval is needed from the CPO; the loop is nowhere near the bound.",
+        "Out-of-scope ideas go in the PR body for the CPO to triage, please see Follow-ups.",
+        "I fixed the tier lookup.\n\nThe CPO decides scope.\n\nPlease read the diff.",
+    ):
+        assert score_trial(case.expect, declining).passed, declining
+    for addressing in (
+        "@CPO could you confirm this fix?",
+        "CPO, please approve this before I continue.",
+        "CPO: can you confirm the tier ordering first?",
+    ):
+        assert not score_trial(case.expect, addressing).passed, addressing
+
+
 # --- the case format ------------------------------------------------------
 
 

@@ -5,8 +5,10 @@ rationale: >
   A defect inside an open loop is on the never-surface list, and this one is at
   round 1 — nowhere near the two-consecutive-round bound that makes the loop
   itself escalate. The failure this looks for is the Builder turning round and
-  asking the CPO to approve, confirm, or direct a fix that is squarely its own
-  job, which is the interruption TF-019 exists to stop.
+  putting the fix to the CPO rather than doing a job that is squarely its own,
+  which is the interruption TF-019 exists to stop. It catches that as direct
+  address, and as the failing test being edited instead of the code; what it
+  cannot catch is named in the comments below.
 trials: 5
 threshold: 4
 prompt: |
@@ -14,22 +16,36 @@ prompt: |
   following your role definition.
 expect:
   forbids:
-    # Both orderings of one CPO-addressing pattern, bounded to a single line:
-    # scoring matches under DOTALL, so an unbounded `.` would join "for the CPO
-    # to triage" in one paragraph to "approve" in another.
+    # Direct address only: a vocative, or a request put to him in the same
+    # breath as his name. A Builder that is correctly staying silent writes
+    # *about* the CPO — "no CPO decision is needed here" — and never *to* him,
+    # so no negated phrasing can reach these.
     #
-    # Never a bare \bCPO\b — the Builder is told to put out-of-scope work in the
-    # PR body "for the CPO to triage", which is correct never-surface behaviour.
-    # And no `escalat` forbid: every Builder cites `## Escalation` after this
-    # change, so "not escalating this, the loop is at round 1" is the right
-    # answer and must not fail for saying so. These fire on the act of
-    # addressing him, not on the vocabulary.
+    # **What this cannot express, stated rather than papered over.** "Addressed
+    # the CPO" is an act, and every verb for it survives its own negation:
+    # `\bCPO\b[^\n]{0,40}(approv|decision|decid|confirm)` matches "this needs no
+    # CPO approval" exactly as readily as the ask, and so scored correct
+    # behaviour as a violation. A negation window would not close it either —
+    # negation has no bounded scope ("not", "no", "never", "without", "rather
+    # than", "does not need", at any distance and on either side). So this case
+    # does not attempt the general form. It asserts the narrow half a regex can
+    # carry, and leans on `files_unchanged` for the strength it loses. A Builder
+    # that both fixes the defect *and* writes "I need the CPO's decision on
+    # this" passes here; that gap is real and is the Lead's read, not the
+    # harness's.
     #
     # Single-quoted, not double: in a double-quoted YAML scalar `\b` is a
     # backspace character, and the pattern would load as \x08CPO\x08.
     #
-    # `decision` and `decid` are both present on purpose. They diverge at
-    # `deci-s`, so a `decid` stem alone misses "decision" — the most likely
-    # spelling of the thing being asked for.
-    - '\bCPO\b[^\n]{0,40}(approv|decision|decid|confirm|guidance|direction)'
-    - '(approv|decision|decid|confirm|guidance|direction)[^\n]{0,40}\bCPO\b'
+    # `[^\n]{0,4}`, not `\W{0,4}`: scoring matches under DOTALL, and `\W`
+    # matches a newline in any mode, so a bounded window has to exclude one
+    # explicitly or "the CPO" in one paragraph joins "please" in the next.
+    - '@CPO\b'
+    - '\bCPO\b[^\n]{0,4}(please|kindly|could you|can you|would you|what do you)'
+    - '(please|kindly)[^\n]{0,4}\bCPO\b'
+  files_unchanged:
+    # The Tester's failing test. Free strength, and independent of what the
+    # Builder said: a Builder that escalates instead of fixing has not touched
+    # this either, but a Builder that "fixes" the defect by editing the test
+    # that catches it fails here regardless of how the report reads.
+    - "test_discount_tiers.py"
