@@ -397,11 +397,44 @@ def test_an_unknown_agent_refuses_rather_than_guessing() -> None:
         dispatch(action, item(), "TokenFruit/area54")
 
 
-def test_nothing_in_the_table_can_ever_merge() -> None:
-    """The merge gate and the shell guard own that step. Nothing here goes near it."""
+def test_nothing_in_the_table_produces_a_merge() -> None:
+    """The table's own output, which is the passing direction of the guard below."""
     for state in (item(spec_status=None), item(has_adr=False), item(pr=pr(isDraft=True))):
         argv = dispatch(next_action(state), state, "TokenFruit/area54")
-        assert "merge" not in argv
+        assert argv[:3] == ["gh", "pr", "ready"] or argv[:1] == ["claude"]
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["gh", "pr", "merge", "29", "--repo", "TokenFruit/area54"],
+        ["gh", "pr", "MERGE", "29"],
+        ["gh", "pr", "merge-queue", "add", "29"],
+        ["gh", "pr", "--merge", "29"],
+        ["sh", "-c", "gh pr merge 29"],
+        ["gh", "pr", "close", "29"],
+    ],
+)
+def test_the_guard_refuses_anything_that_is_not_one_of_the_two_shapes(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str]
+) -> None:
+    """The rejecting direction, which nothing exercised: the guard could be deleted.
+
+    Only the first of these was refused before — the check was exact-token and
+    case-sensitive, so uppercase, a subcommand prefix, a flag and a shell all
+    walked through a guard the docstrings credited with stopping merges.
+    """
+    monkeypatch.setattr(orchestrate, "cli_invocation", lambda agent, prompt: argv)
+    action = next_action(item(has_adr=False))
+    with pytest.raises(OrchestratorError, match="only `gh pr ready`"):
+        dispatch(action, item(), "TokenFruit/area54")
+
+
+def test_the_guard_lets_an_agent_invocation_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The passing direction, so the guard cannot be tightened into refusing everything."""
+    monkeypatch.setattr(orchestrate, "cli_invocation", lambda agent, prompt: ["claude", "-p", "x"])
+    argv = dispatch(next_action(item(has_adr=False)), item(), "TokenFruit/area54")
+    assert argv == ["claude", "-p", "x"]
 
 
 # --- which PR belongs to which item -----------------------------------------

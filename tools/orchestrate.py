@@ -12,7 +12,9 @@ Status line, an ADR, a branch, a PR's flags, verdicts and checks are the truth.
     python -m tools.orchestrate {status,next} --repo owner/name [--run]
 
 `--run` dispatches exactly one action and stops — an agent, or marking a PR
-ready. It never merges: the merge gate and the shell guard own that step.
+ready. It builds no other command, and `dispatch` refuses to run one. The merge
+gate and `.claude/hooks/guard_bash.py` are what hold the merge itself: nothing
+here can pass that guard, and nothing here is the reason it holds.
 """
 
 from __future__ import annotations
@@ -498,9 +500,15 @@ def in_flight(items: list[Item]) -> list[Item]:
 def dispatch(action: Action, item: Item, repo: str) -> list[str]:
     """Return the argv that performs *action*, or refuse.
 
-    Two kinds are dispatchable and no others. Nothing here may merge: the gate
-    and the shell guard own that step, and reaching around them would undo the
-    one gate that is code rather than judgement.
+    Two kinds are dispatchable and no others, and what may run is stated as a
+    shape rather than as a word to scan for. Scanning found `merge` as a whole
+    argv element and nothing else, so `gh pr MERGE`, `gh pr merge-queue add`,
+    `gh pr --merge` and `sh -c "gh pr merge 29"` all passed it.
+
+    What actually stops a merge is `.claude/hooks/guard_bash.py`, which refuses
+    `gh pr merge` without a live authorisation naming that PR at that head. This
+    is the narrower claim it can keep: a clause added later that builds some
+    other `gh` call does not get to run unread.
     """
     if action.kind == "ready":
         argv = ["gh", "pr", "ready", str(item.pr.get("number")), "--repo", repo]
@@ -513,8 +521,11 @@ def dispatch(action: Action, item: Item, repo: str) -> list[str]:
         raise OrchestratorError(
             f"'{action.kind}' is not dispatchable: {action.blocked_on}. This one is the CPO's."
         )
-    if any(arg == "merge" for arg in argv):
-        raise OrchestratorError("refusing: nothing here may merge. Use the merge gate.")
+    if argv[:3] != ["gh", "pr", "ready"] and argv[:1] != ["claude"]:
+        raise OrchestratorError(
+            f"refusing to run {' '.join(argv[:3])}: only `gh pr ready` and a `claude` agent "
+            "invocation may be dispatched. The merge belongs to the gate."
+        )
     return argv
 
 
