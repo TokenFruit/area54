@@ -94,7 +94,15 @@ MUST_NOT_BE_BLOCKED_FOR_MENTIONING = (
     'echo "do not use git push origin main"',
     "gh pr comment 1 --body 'never run `git push origin main` directly'",
     "gh pr comment 1 --body-file review.md",
+    # Branch names that merely contain a protected one. Trading a bypass for a
+    # false positive is the way a rewritten guard fails, and it fails quietly:
+    # the pipeline stalls and the refusal reads as correct.
     "git push origin feature/main",
+    "git push origin mainline",
+    "git push origin main-fix",
+    "git push origin my-main",
+    "git push -u origin master-plan",
+    "git push origin trunk-based",
 )
 
 #: Commands the team cannot work without. A guard that blocks these is broken

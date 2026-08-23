@@ -324,18 +324,30 @@ def _contained(target: Path, rel: str) -> bool:
     path = (target / rel).resolve()
     if path == root or root not in path.parents:
         return False
-    return (target / rel).exists()
+    # `is_file`, not `exists`: a manifest entry naming a directory reached
+    # `_digest` and raised IsADirectoryError out of `plan()`, so `--check` and
+    # `--dry-run` crashed on a target nobody could have known was malformed.
+    # Fail-safe — the target was unmodified — but a crash is not a diagnosis.
+    return (target / rel).is_file()
 
 
 def _prune(target: Path, paths: list[str]) -> None:
     """Delete *paths* and any directory they leave empty.
 
-    Every path was checked by :func:`_contained` first, and the upward walk
-    stops by containment rather than by equality with the target — an equality
-    test cannot terminate on a parent that is already outside it.
+    Containment is re-checked here rather than trusted from the caller. Mutation
+    testing found the guard that was here unreachable — `_contained` filtered
+    everything at the single call site, so this function deleted whatever it was
+    handed, and `_contained` was a single point of failure. A second caller
+    would have reintroduced the traversal with no test to catch it.
+
+    The upward walk stops by containment rather than by equality with the
+    target: an equality test cannot terminate on a parent that is already
+    outside it.
     """
     root = target.resolve()
     for rel in paths:
+        if not _contained(target, rel):
+            continue
         path = target / rel
         path.unlink(missing_ok=True)
         parent = path.parent

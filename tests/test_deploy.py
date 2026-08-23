@@ -453,3 +453,45 @@ def test_the_collision_warning_survives_as_one_annotation() -> None:
 
     assert "\n" not in _one_line("first line\nsecond line")
     assert "%0A" in _one_line("first line\nsecond line")
+
+
+def test_a_manifest_entry_naming_a_directory_does_not_crash(tmp_path: Path) -> None:
+    """It raised IsADirectoryError out of `plan()`, so `--check` crashed.
+
+    Fail-safe — the target was unmodified — but a crash is not a diagnosis, and
+    the person holding the malformed manifest learns nothing from a traceback.
+    """
+    target = make_repo(tmp_path)
+    (target / ".claude").mkdir(exist_ok=True)
+    (target / ".claude" / "adirectory").mkdir()
+    (target / VERSION_FILE).write_text("deadbeef .claude/adirectory\n", encoding="utf-8")
+    commit_all(target)
+
+    assert [c.path for c in plan(target) if c.kind.startswith("superseded")] == []
+    install(target)
+    assert (target / ".claude" / "adirectory").is_dir()
+
+
+def test_prune_refuses_a_traversing_path_on_its_own(tmp_path: Path) -> None:
+    """The containment clause inside `_prune` must be load-bearing by itself.
+
+    Mutation testing showed it unreachable: `_contained` filters everything at
+    the single call site, so `_contained` was a single point of failure and a
+    second caller of `_prune` would reintroduce the traversal with no test to
+    catch it. This calls `_prune` directly, with exactly the input `_contained`
+    would have removed.
+    """
+    from tools.deploy import _prune
+
+    victim = tmp_path / "victim.txt"
+    victim.write_text("not yours\n", encoding="utf-8")
+    victim_dir = tmp_path / "victimdir"
+    victim_dir.mkdir()
+    (victim_dir / "only.txt").write_text("nor this\n", encoding="utf-8")
+
+    target = make_repo(tmp_path)
+    _prune(target, ["../victim.txt", "../victimdir/only.txt", str(victim)])
+
+    assert victim.is_file()
+    assert (victim_dir / "only.txt").is_file()
+    assert victim_dir.is_dir()
