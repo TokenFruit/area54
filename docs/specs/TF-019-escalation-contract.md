@@ -34,8 +34,10 @@ thing, because one word was doing two jobs. A **gate** is a stop: the pipeline
 halts and waits for the CPO before continuing, and there are exactly two. An
 **escalation** is a report that interrupts without halting at a gate, and
 criterion 2's list is the complete set of them. `team/TEAM.md:59-62` calls two
-stuck defect rounds "**the single exception**", which fits neither reading;
-criterion 16 rewrites it. See **Questions raised by review**.
+stuck defect rounds "**the single exception**", which is now simply wrong —
+the CPO has confirmed all five original categories interrupt (resolved question
+6), so the stuck loop is one entry among six, not the only one. Criterion 16 is
+therefore load-bearing rather than tidying: it removes a false statement.
 
 ## User stories
 
@@ -63,13 +65,23 @@ criterion 16 rewrites it. See **Questions raised by review**.
    **then** it covers at minimum: reaching a CPO gate (with the full PR URL at
    Gate 2); a finding that changes what should be built; an impediment that the
    role's own stop conditions did not clear; anything destructive or irreversible,
-   including a refused merge gate; and a credential or access the team cannot
-   obtain. "Impediment", not "blocker" — `blocker` is a Lead severity in this
-   repo (`team/TEAM.md:159`, `:185`) and must not be overloaded here.
+   including a refused merge gate; a credential or access the team cannot
+   obtain; and **two consecutive defect rounds with no progress**, stated with
+   that count and not as a general "the team is stuck". "Impediment", not
+   "blocker" — `blocker` is a Lead severity in this repo (`team/TEAM.md:159`,
+   `:185`) and must not be overloaded here.
+   **The stuck-loop entry carries a numeric bound the constitution states
+   nowhere else in prose** — only at `team/TEAM.md:61`, which criterion 16
+   rewrites, and in the flow diagram at `:47` ("until clean, or stuck twice").
+   It must appear in this list with its count intact, or criterion 16 deletes
+   the loop's only stated end.
 3. **Given** that section, **when** its never-surface list is read, **then** it
    covers at minimum: retries and self-corrected failures; routine progress;
    internal mechanics; findings and defects inside an open defect loop; and
-   out-of-scope ideas, which go to the PR body's Follow-ups list.
+   out-of-scope ideas, which go to the PR body's Follow-ups list. **And** the
+   defect-loop entry states its own limit in the same sentence: findings inside
+   an open loop stay silent *until* the loop hits criterion 2's two-round bound,
+   at which point the loop itself escalates.
 4. **Given** that section, **when** its reporting rule is read, **then** it
    requires a CPO-facing message to state the outcome and the decision, forbids
    relaying raw tool output or status lines into a CPO-facing message, and gives
@@ -150,16 +162,24 @@ criterion 16 rewrites it. See **Questions raised by review**.
     gates, the team does not ask" paragraph is read, **then** it no longer calls
     two consecutive defect rounds "the single exception", and instead points at
     `## Escalation`'s escalate-immediately list as the complete set. Nothing in
-    that section names an interruption the `## Escalation` list omits.
+    that section names an interruption the `## Escalation` list omits. **The
+    two-consecutive-rounds bound is not deleted, only moved**: it must be
+    present in criterion 2's list before this paragraph stops stating it, and
+    the flow diagram's "until clean, or stuck twice" (`team/TEAM.md:47`) stays
+    as it is, so the two never disagree.
 
 ### How each criterion is verified
 
 Mechanically, by `pytest` or a named command: 1 (list presence and length only),
 8, 9, 11 (the `--list` half), 12, 13. By a human reading the files: 1 (the
-completeness clause), 2, 3, 5, 6, 10 (proxy quality), 11 (the rationale half),
-14, 15, 16. Criteria 4 and 7 are mixed — the literal word `unprompted` and the
-presence of both sections per agent are mechanical; whether a trigger is an
-instance of a category is not.
+completeness clause), 2, 3, 5, 6, 11 (the rationale half), 14, 15, 16. Criteria
+4, 7 and 10 are mixed — the literal word `unprompted` and the presence of both
+sections per agent are mechanical; whether a trigger is an instance of a
+category is not. **Criterion 10's mechanical half:** the cases existing,
+loading, naming a fixture that resolves on disk — already enforced for every
+case by `tests/test_eval_harness.py:46` — and their `expect` blocks using only
+the five primitives, which is a `pytest` over the YAML keys. Only proxy quality
+is the human read.
 
 **This is stated here on purpose.** `team/TEAM.md`'s Definition of Done item 1
 requires every acceptance criterion to have a passing automated test, and this
@@ -176,7 +196,7 @@ were never removed. `devops.md:17` still says "you run only after the CPO has
 approved the PR. No amount of green changes that", `ship.md:15-16` still calls
 explicit CPO approval "absolute", and `team/TEAM.md:135` still forbids DevOps
 `gh pr merge` "without explicit CPO approval on the PR" — even though the merge
-gate's own table two sections later lists five checks with approval among none of
+gate's own table in the next section lists five checks with approval among none of
 them. **Three files, four sites, and `TEAM.md` and `devops.md` each contradict
 themselves.** So devops waits for the CPO on a PR the gate would have merged.
 
@@ -209,7 +229,7 @@ not the only exception sends an agent to the CPO for a ruling the contract makes
    gate. Criterion 5 stands — exactly two gates. What the first review forced
    apart is that *gates* and *escalations* are different things: the complete set
    of mid-pipeline interruptions is criterion 2's escalate-immediately list, not
-   the two named at `team/TEAM.md:59-62`. See **Questions raised by review**.
+   the two named at `team/TEAM.md:59-62`. Widened by the CPO in question 6.
 2. **Are target repos redeployed as part of this item, or separately?**
    **Separately.** Ruled by the CPO. Criterion 12 stands: `--check` must report
    the constitution as stale, so the divergence is visible. area52 keeps running
@@ -235,50 +255,21 @@ not the only exception sends an agent to the CPO for a ruling the contract makes
    closing line (`lead.md:104`, `tester.md:134`) and neither has a stop-conditions
    section, so this is one new section each, in two files.
 
-Answers 1 and 2 are the CPO's. Answers 3, 4 and 5 were delegated to the
+6. **Is criterion 2's list the complete set of mid-pipeline interruptions, given
+   that it widens resolved question 1?** **Yes — all five escalate-immediately
+   categories are confirmed.** Ruled by the CPO, 2026-08-23, in review round 2:
+   "a finding that changes what should be built" and "a credential the team
+   cannot obtain" **do** interrupt mid-pipeline. Criteria 2, 5 and 16 are
+   settled, not provisional. The consequence is that `team/TEAM.md:61`'s "the
+   single exception" is factually wrong — there are six escalating conditions,
+   not one — which is why criterion 16 is required rather than cosmetic.
+
+Answers 1, 2 and 6 are the CPO's. Answers 3, 4 and 5 were delegated to the
 assistant by the CPO and adopted as written; any of the three can be reversed on
 a word, which would reopen the criteria they name.
-
-## Questions raised by review
-
-1. **Resolved question 1 said "the only mid-pipeline interruptions remain stuck
-   twice in the defect loop and a refused merge gate. An agent that wants to
-   interrupt for anything else is wrong." Criterion 2 mandates five categories.**
-   This revision reconciles them by making criterion 2's list the complete set —
-   so "a finding that changes what should be built" and "a credential the team
-   cannot obtain" now *do* interrupt mid-pipeline, which the earlier wording said
-   they must not. That is a change to a CPO ruling, not to its expression, and it
-   is why criterion 16 rewrites `team/TEAM.md:59-62`. **Confirm, or say which of
-   the five categories must wait rather than interrupt.** The rest of the spec is
-   unaffected either way.
 
 ## Dependencies
 
 - None blocking. `tools/validate.py`, `tools/deploy.py`, and `evals/` all exist.
 - Related, not required: TF-016 (evals for uncovered roles) and TF-020 (learn
   from transcripts) both extend this contract's verification later.
-
-## Revision history
-
-**2026-08-23 — after `/review` (2 blockers, 2 majors, 3 minors).** Nothing was
-renumbered; criterion 16 is appended, so every cross-reference still holds.
-
-- *Blocker, 2 vs 5.* Gate and escalation separated: 5 closes the gate count, 2's
-  list is the complete interruption set, 16 rewrites `TEAM.md`'s "single
-  exception". Flagged as a change to resolved question 1, not a restatement.
-- *Blocker, 14/15.* `team/TEAM.md:135` named as the third site, the two
-  self-contradictions named, and the false "six rules" rationale corrected.
-- *Major, 11.* Rationale verified by reading the YAML; `--list` now claims only
-  that the cases load and parse, which is all it prints.
-- *Major, 12.* Names `.claude/TEAM.md` — the destination the plan prints — and a
-  non-zero exit.
-- *Major, 10.* Rewritten to the five `Expectation` primitives, verifies existence
-  and shape only, and adds the missing fixture.
-- *Major (process).* "How each criterion is verified" added, recording why
-  Definition of Done item 1 cannot be met literally here.
-- *Minor, 1.* "Marked as exhaustive" moved from the mechanical half to a human
-  read, per resolved question 4's ban on pinning prose.
-- *Minor, 9.* Names a function taking a path, not the CLI.
-- *Minor, 2.* "A real blocker" → "an impediment", freeing `blocker` for severity.
-- *Minor, 14.* Drops the precondition-on-*running-the-gate* clause nobody wrote
-  and names the three real phrasings instead.
