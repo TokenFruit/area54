@@ -28,15 +28,9 @@ worth distributing.
 <!-- What the team is working on or picking up next. Keep this short —
      three or four items. A long "Now" is a "Next" in disguise. -->
 
-- [ ] TF-019 — The escalation contract. `TEAM.md` says what an agent does when
-      it is blocked and nothing about what must never reach the CPO, so agents
-      narrate mechanics where they should report an outcome and a decision
-- [ ] TF-020 — Learn from the transcripts. Every run leaves one on disk and
-      nothing reads it, so an agent definition improves only when a human
-      remembers a failure — evidence-gated proposals, never a self-rewrite
-- [ ] TF-021 — Nothing checks that a handoff happened. The sequence is prose an
-      agent chooses to follow, so a skipped step leaves no trace — three went
-      unnoticed in one day. Reconcile verdicts against commits, in code
+- [ ] TF-021 — **The orchestrator.** The sequence is published and executed by
+      nobody: a human runs each step and six were skipped in one day. GitHub
+      already emits every event the pipeline needs — build the runner
 - [ ] TF-003 — Package the team as a Claude Code plugin, so a prompt fix reaches
       every product repo by version bump instead of six copy-pastes
 
@@ -44,12 +38,16 @@ worth distributing.
 
 <!-- Committed, not started. -->
 
+- [ ] TF-020 — Learn from the transcripts. **Paused at design**, deliberately:
+      spec on `main`, ADR and design on `tf-020-design`, review findings in
+      PR #26. The most interesting item here and the least necessary
 - [ ] TF-016 — Evals for the five roles they do not cover. `designer` and
       `devops` have each executed exactly once, and nothing would catch either
       of them degrading
-- [ ] TF-017 — The repo does not check itself. A 481-line spec and a 707-line
-      ADR for one `<head>` feature both got through; and branch protection
-      turns on CI job names that no test pins, over actions still on moving tags
+- [ ] TF-017 — The repo does not check itself. Branch protection turns on CI job
+      names that no test pins, over actions still on moving tags. **And the
+      inverse now applies too — 4,342 lines of tooling guard 1,620 lines of
+      product; stop adding checks that prevent nothing**
 - [ ] TF-010 — Close area52's two Definition-of-Done gaps: ESLint is
       unconfigured (`next lint` is deprecated and prompts interactively), and
       `npm run build` needs DATABASE_URL and the NextAuth secrets
@@ -72,6 +70,9 @@ worth distributing.
 
 <!-- Shipped. Keep the TF number and the date. -->
 
+- [x] **TF-019** — The escalation contract: two closed lists in TEAM.md, all
+      eight agents stating stop conditions as instances of them, and a
+      structural check that reads shape without pinning prose — 2026-08-23
 - [x] **TF-018** — The merge is a gate that is code, not judgement: six rules, a
       short-lived authorisation naming one PR at one commit, and a guard that
       permits `gh pr merge` only against it — 2026-08-23
