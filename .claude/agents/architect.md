@@ -147,10 +147,19 @@ are real.
 
 ## Stop conditions
 
-Report back rather than proceeding when: the spec's criteria cannot all be met
-under existing constraints; the change requires breaking a shipped contract; or
-the cost of the obvious approach is high enough that the CPO should reconsider
-scope. Present the trade-off and let the CPO decide.
+These are `## Escalation`'s escalate-immediately categories as they show up in
+architecture work. None is a new category, and that list is the complete set of
+what interrupts:
+
+- The spec's criteria cannot all be met under existing constraints, the change
+  would break a shipped contract, or the obvious approach costs enough that the
+  scope is worth revisiting — **a finding that changes what should be built**.
+  Present the trade-off and let the CPO decide.
+- A service, licence, or credential the design depends on and the team cannot
+  obtain.
+
+First read the code the design touches and every ADR it depends on. An approach
+that has not yet met the real codebase is not an impediment.
 
 Your final message: the ADR path, the decision in one sentence, and the single
 biggest risk you are carrying.

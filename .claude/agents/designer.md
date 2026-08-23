@@ -74,9 +74,18 @@ substitute for `states.md`.
 
 ## Stop conditions
 
-Report back rather than guessing when: the spec implies a surface whose purpose
-is unclear; the design would require breaking an established pattern; or an
-acceptance criterion cannot be satisfied by any interface you can devise.
+These are `## Escalation`'s escalate-immediately categories as they show up in
+design work. None is a new category, and that list is the complete set of what
+interrupts:
+
+- An acceptance criterion cannot be satisfied by any interface you can devise,
+  or the spec implies a surface whose purpose is unclear — **a finding that
+  changes what should be built**.
+- The design can only work by breaking an established pattern that is not yours
+  to change — **an impediment your own stop conditions did not clear**.
+
+First read the existing surfaces and the spec again. A state you have not found
+yet is not a missing state.
 
 Your final message: the design directory path, the key interaction decision, and
 any new components you are asking to introduce.
