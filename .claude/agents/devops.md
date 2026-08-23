@@ -38,8 +38,11 @@ Run it. Do not evaluate the conditions yourself, and do not conclude from a
 green-looking PR that they are met:
 
 ```
-python -m tools.merge_gate <pr> --repo <owner/name>
+python3 .claude/tools/merge_gate.py <pr> --repo <owner/name>
 ```
+
+*(In area54 itself, where the gate is source rather than a deployed copy, that
+is `python -m tools.merge_gate <pr> --repo <owner/name>`.)*
 
 **Exit 0** — every rule passed, and it has written a short-lived authorisation
 naming that exact PR and commit. Merge.
