@@ -142,6 +142,39 @@ in a sandbox. The global deny list still catches the destructive cases for
 everyone: `gh pr merge`, force pushes, pushes to `main`, `git reset --hard`,
 and reading `.env`.
 
+## The merge gate
+
+The merge is the one irreversible step in the pipeline, so it is the one gate
+that is **code rather than judgement**:
+
+```
+python -m tools.merge_gate <pr> --repo <owner/name>
+```
+
+| It checks | Because |
+| --- | --- |
+| Not a draft, and GitHub reports it mergeable | the obvious two |
+| Every CI check concluded successfully **on this exact head** | a green run on an older commit proves nothing about this one |
+| The body links a spec, or states `No spec: <reason>` | a change nobody specified is a change nobody agreed to |
+| A **Lead verdict** with no blockers or majors | posted to the PR, not to a transcript |
+| A **`Tester verdict: Pass`** | posted to the PR, not to a transcript |
+
+**No checks reported is a refusal, not a pass.** A repo without CI would
+otherwise sail through the check meant to catch it.
+
+On success the gate writes a ten-minute authorisation naming that PR and commit,
+and the shell guard permits `gh pr merge` only against a live one. So an agent
+cannot merge by deciding it is allowed to — only by having actually passed. One
+authorisation, one merge.
+
+**A refused gate goes to the CPO.** Not around, not again with different
+wording. That is the whole point of the gate being outside the agent.
+
+**Verdicts must be posted to the PR.** On TF-002 the Tester passed, reported
+into a transcript, and the change merged carrying a code review and no evidence
+anyone had verified it against its spec. A verdict that is not on the PR does
+not exist — not to the next reader, and not to the gate.
+
 ## Definition of Done
 
 A feature is done when **all** of these are true. No exceptions, no "we'll do it
