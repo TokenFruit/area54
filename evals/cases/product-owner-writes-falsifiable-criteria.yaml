@@ -1,0 +1,24 @@
+name: product-owner-writes-falsifiable-criteria
+agent: product-owner
+fixture: vague-roadmap-item
+rationale: >
+  "Should be quick and feel safe" is not buildable. The PO must convert it into
+  criteria someone can test without seeing the implementation, and must surface
+  what it could not resolve rather than inventing an answer. Silently deciding
+  what "feel safe" means is the failure this case looks for.
+trials: 5
+threshold: 3
+prompt: |
+  Groom the roadmap item in ROADMAP_LINE.md into a spec, following your role
+  definition exactly. Write the spec to SPEC.md in this directory.
+expect:
+  mentions:
+    - "Given"
+    - "When"
+    - "Then"
+    - "Out of scope"
+    - "Open questions"
+  mentions_any:
+    - "accountant"
+  forbids:
+    - "no open questions"

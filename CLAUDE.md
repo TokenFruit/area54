@@ -38,7 +38,7 @@ that executes on a developer's machine or in CI.
 | Lint / format | `ruff` |
 | Types | `mypy --strict` |
 | Unit tests | `pytest` — deterministic checks over agent definitions |
-| Behavioural tests | `claude plugin eval` — scored over repeated runs |
+| Behavioural tests | `python -m tools.evals` — scored over repeated trials |
 | CI | GitHub Actions |
 | Runtime | none |
 
@@ -63,11 +63,17 @@ the CPO approves the ADR before it is accepted. See
 | Typecheck | `mypy tools tests` |
 | Unit tests | `pytest` |
 | Agent + command checks | `python tools/validate.py` |
-| Behavioural evals | `claude plugin eval` |
+| Behavioural evals | `python -m tools.evals` (live; costs money) |
+| List eval cases | `python -m tools.evals --list` |
 | Build | none — the repo is the plugin |
 
-`claude plugin eval` availability on this account is unverified — DevOps
-confirms it before CI depends on it.
+The eval harness is tested and its CLI invocation has been executed for real,
+but **no trial has yet completed**: the CLI's OAuth session is expired, so live
+trials error before reaching the model. Errored trials are reported as
+inconclusive, never as behavioural failures. See `evals/README.md`.
+
+`claude plugin eval` — the CLI's own, better runner — exists but is in early
+access and not enabled on this account. Migrate to it when access arrives.
 
 ## Model pinning
 
@@ -116,8 +122,12 @@ An agent no command invokes is dead code, and fails the build.
 **What this cannot check.** The Tester and the Builders all legitimately hold
 `Write` and `Edit`, so the rule that the Tester writes tests from the spec
 rather than patching the implementation is *not* mechanically enforceable. It
-lives in the Tester's prompt and in the Lead's review. Treat it accordingly: it
-is the weakest link in the review gate.
+lives in the Tester's prompt and in the Lead's review.
+
+That gap is what `evals/` exists to cover — behavioural cases against fixtures
+with planted defects, scored over repeated trials. See `evals/README.md`. Evals
+cost real money and are **not** in the pull-request gate; they run on manual
+dispatch.
 
 ## Definition of Done
 

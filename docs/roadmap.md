@@ -19,9 +19,14 @@ acceptance criteria here, stop and run `/groom` instead.
 
 <!-- Committed, not started. -->
 
-- [ ] TF-005 — Eval harness: fixture repos with planted defects. Does the Lead
-      catch the bug? Does the PO write falsifiable criteria? Does the Tester
-      refuse to weaken a failing test?
+- [ ] TF-007 — Get one eval trial to complete. The CLI is installed and the
+      invocation is verified end to end, but its OAuth session is expired so
+      every trial errors before reaching the model. **Blocked on `claude
+      login`.** Until a trial completes, the cases are a statement of intent,
+      not evidence
+- [ ] TF-008 — Migrate to `claude plugin eval` when early access arrives. It
+      has an ablation arm that measures whether the team actually helps versus
+      no plugin at all — something this harness cannot do
 - [ ] TF-006 — Deploy to the first target repo. **Blocked: the CPO names the
       target.** Not `area53` — area54 is independent of Gempli. Prefer a repo
       that is real, active, and already has a test suite, so the team's output
@@ -46,6 +51,8 @@ acceptance criteria here, stop and run `/groom` instead.
       CI — 2026-08-23
 - [x] **TF-004** — Tool scoping per role, and every command delegation resolved
       against a real agent — 2026-08-23
+- [x] **TF-005** — Eval harness: fixtures with planted defects, scoring over
+      repeated trials, four cases. Not yet run live — 2026-08-23
 
 ---
 

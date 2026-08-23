@@ -90,3 +90,8 @@ jobs:
 
       - name: Agent and command definitions
         run: python tools/validate.py
+
+      # Loading the eval cases is free and deterministic. Running them is not,
+      # and lives in evals.yml.
+      - name: Eval cases load
+        run: python -m tools.evals --list

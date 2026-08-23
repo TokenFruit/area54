@@ -13,11 +13,14 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["tools"]
+packages = ["tools", "tools.evals"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# Eval fixtures are specimens. They carry deliberate defects and must stay
+# exactly as written, so they are not ours to lint or format.
+exclude = ["evals/fixtures"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "RET"]
