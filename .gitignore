@@ -28,3 +28,6 @@ coverage/
 
 # OS
 .DS_Store
+
+# Pipeline telemetry — local, per-checkout
+.claude/telemetry.jsonl
