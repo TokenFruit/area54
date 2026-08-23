@@ -281,6 +281,24 @@ def test_a_green_draft_is_marked_ready() -> None:
     assert action.kind == "ready"
 
 
+@pytest.mark.parametrize(
+    ("rollup", "stage"),
+    [
+        ([{"status": "IN_PROGRESS"}], "In review"),
+        ([{"conclusion": "FAILURE"}], "Building"),
+        ([], "In review"),
+    ],
+)
+def test_a_draft_without_green_ci_is_not_marked_ready(rollup: object, stage: str) -> None:
+    """The other direction of the ready rule: "only when CI is green" is the rule.
+
+    Dropping the `green` condition from that clause left the suite passing.
+    """
+    action = next_action(item(pr=pr(isDraft=True, statusCheckRollup=rollup)))
+    assert action.kind != "ready"
+    assert action.stage == stage
+
+
 def test_a_pr_with_no_verdicts_goes_to_the_lead() -> None:
     action = next_action(item(pr=pr(comments=[])))
     assert action.agent == "lead"
