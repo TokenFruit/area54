@@ -58,8 +58,9 @@ assumption.
 
 **Between the gates, the team does not ask.** Findings, defects, failing tests
 and contradictions between an ADR and a design are the team's work, not the
-CPO's. The single exception: two consecutive defect rounds with no progress
-means the team is stuck, and being stuck is worth interrupting for.
+CPO's. What does interrupt is exactly the escalate-immediately list in
+`## Escalation` — six conditions, and that list is the complete set. Two
+consecutive defect rounds with no progress is one of the six, not the only one.
 
 The individual commands — `/groom`, `/design`, `/build`, `/review`, `/ship` —
 still exist for running one stage on its own, or resuming a pipeline partway.
