@@ -1,11 +1,15 @@
 """Tests for the installer.
 
-Deployment is a copy, so drift is the failure to design against. These tests
-mostly check that the installer refuses to do the unsafe thing.
+The team travels as a plugin now, so most of what used to be copied is not
+installed at all. What is left is three files and two settings keys, and drift
+is still the failure to design against: these tests mostly check that the
+installer refuses to do the unsafe thing, and that the plugin is what actually
+carries the team.
 """
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -13,10 +17,13 @@ import pytest
 
 from tools.deploy import (
     ARTEFACT_DIRS,
+    REPO_ROOT,
     VERSION_FILE,
     DeployError,
     install,
     plan,
+    plugin_manifest,
+    plugin_reference,
     read_manifest,
 )
 
@@ -71,12 +78,52 @@ def test_a_first_install_delivers_the_team(tmp_path: Path) -> None:
     target = make_repo(tmp_path)
     install(target)
 
-    assert (target / ".claude" / "agents" / "lead.md").is_file()
-    assert (target / ".claude" / "commands" / "review.md").is_file()
     assert (target / ".claude" / "TEAM.md").is_file()
+    assert (target / ".claude" / "settings.json").is_file()
     assert (target / ".github" / "pull_request_template.md").is_file()
     for directory in ARTEFACT_DIRS:
         assert (target / directory).is_dir()
+
+
+def test_the_team_itself_is_not_copied(tmp_path: Path) -> None:
+    """The whole of TF-003: a prompt fix arrives by version bump, not by copy.
+
+    Eighteen files used to be written here. If any of them come back, the
+    target has two copies of the team that can disagree, and the version bump
+    stops being how a fix travels.
+    """
+    target = make_repo(tmp_path)
+    install(target)
+    for gone in (
+        ".claude/agents",
+        ".claude/commands",
+        ".claude/hooks",
+        ".claude/tools",
+    ):
+        assert not (target / gone).exists(), f"{gone} is copied again"
+
+
+def test_the_target_is_told_where_the_team_comes_from(tmp_path: Path) -> None:
+    """Two keys instead of eighteen files: the marketplace, and the plugin."""
+    target = make_repo(tmp_path)
+    install(target)
+    settings = json.loads((target / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    assert settings["enabledPlugins"] == {plugin_reference(): True}
+    marketplace = plugin_reference().split("@", 1)[1]
+    source = settings["extraKnownMarketplaces"][marketplace]["source"]
+    # A directory source is how area54 loads its own copy, and is meaningless
+    # anywhere else: a target repo has to fetch it.
+    assert source["source"] == "github"
+    assert source["repo"] == "TokenFruit/area54"
+
+
+def test_the_version_file_records_the_plugin_version(tmp_path: Path) -> None:
+    """ "Fixed by version bump" needs the target to say which version it has."""
+    target = make_repo(tmp_path)
+    install(target)
+    recorded = (target / VERSION_FILE).read_text(encoding="utf-8")
+    assert f"version {plugin_manifest()['version']}" in recorded
+    assert "claude plugin update area54" in recorded
 
 
 def test_the_deployed_constitution_says_not_to_edit_it(tmp_path: Path) -> None:
@@ -106,8 +153,8 @@ def test_the_manifest_records_every_installed_file(tmp_path: Path) -> None:
     target = make_repo(tmp_path)
     install(target)
     manifest = read_manifest(target)
-    assert ".claude/agents/lead.md" in manifest
     assert ".claude/TEAM.md" in manifest
+    assert ".claude/settings.json" in manifest
     assert "installed from area54" in (target / VERSION_FILE).read_text(encoding="utf-8")
 
 
@@ -120,8 +167,10 @@ def test_a_local_edit_is_detected_rather_than_silently_reverted(tmp_path: Path) 
     install(target)
     commit_all(target)
 
-    lead = target / ".claude" / "agents" / "lead.md"
-    lead.write_text(lead.read_text(encoding="utf-8") + "\nlocal tweak\n", encoding="utf-8")
+    constitution = target / ".claude" / "TEAM.md"
+    constitution.write_text(
+        constitution.read_text(encoding="utf-8") + "\nlocal tweak\n", encoding="utf-8"
+    )
     commit_all(target)
 
     assert any(c.kind == "locally-edited" for c in plan(target))
@@ -134,12 +183,12 @@ def test_force_overwrites_a_local_edit(tmp_path: Path) -> None:
     install(target)
     commit_all(target)
 
-    lead = target / ".claude" / "agents" / "lead.md"
-    lead.write_text("gutted\n", encoding="utf-8")
+    constitution = target / ".claude" / "TEAM.md"
+    constitution.write_text("gutted\n", encoding="utf-8")
     commit_all(target)
 
     install(target, force=True)
-    assert "Engineering Lead" in lead.read_text(encoding="utf-8")
+    assert "Do not edit it here" in constitution.read_text(encoding="utf-8")
 
 
 def test_check_reports_a_stale_target(tmp_path: Path) -> None:
@@ -163,9 +212,24 @@ def test_settings_are_installed(tmp_path: Path) -> None:
 
     # Merging is not denied by a permission rule any more — the merge gate
     # decides and the guard enforces it. So what a target repo must receive is
-    # the guard itself; settings permitting `gh pr merge` without it would be
-    # an ungated merge.
-    assert (target / ".claude" / "hooks" / "guard_bash.py").is_file()
+    # the guard itself, and that now arrives in the plugin rather than as a
+    # copied file. What has to hold is that the plugin is enabled: settings
+    # permitting `gh pr merge` with no plugin behind them is an ungated merge.
+    assert loaded["enabledPlugins"][plugin_reference()] is True
+
+
+def test_the_permission_list_is_the_one_area54_runs_under(tmp_path: Path) -> None:
+    """The rules an agent runs under here are the rules it runs under anywhere.
+
+    Not a copied file: `plugin.json` accepts a `settings` record, passes
+    validation with it, and ignores it at load time — so the list is generated
+    into the target rather than shipped in the manifest.
+    """
+    target = make_repo(tmp_path)
+    install(target)
+    installed = json.loads((target / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    ours = json.loads((REPO_ROOT / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    assert installed["permissions"] == ours["permissions"]
 
 
 def test_a_preexisting_target_file_is_not_clobbered(tmp_path: Path) -> None:

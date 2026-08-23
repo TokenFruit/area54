@@ -97,7 +97,7 @@ def render(runs: list[Run]) -> str:
     if not runs:
         return (
             "No telemetry recorded yet.\n"
-            "Events are written by .claude/hooks/record_event.py while the pipeline runs."
+            "Events are written by hooks/record_event.py while the pipeline runs."
         )
     lines = [f"{len(runs)} run(s) recorded.\n"]
     for index, run in enumerate(reversed(runs), start=1):

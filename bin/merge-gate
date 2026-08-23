@@ -1,0 +1,10 @@
+#!/bin/sh
+# The merge gate, reachable by name in any repo the plugin is installed in.
+#
+# Claude Code puts a plugin's bin/ on PATH, so `merge-gate <pr> --repo <o/n>`
+# resolves without anyone knowing where the plugin was checked out. That matters
+# because the alternative — an absolute path in devops.md — is wrong the moment
+# the plugin moves, and ${CLAUDE_PLUGIN_ROOT} is not exported to the Bash tool.
+#
+# The gate itself imports only the standard library, precisely so it can travel.
+exec python3 "$(dirname "$0")/../tools/merge_gate.py" "$@"

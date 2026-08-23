@@ -8,14 +8,19 @@ you change. If a rule below is wrong for this project, fix it in area54 so every
 project gets the fix — or, if the rule genuinely should differ here, say so in
 this repo's own `CLAUDE.md`, which always wins over this file.
 
-## What is deployed alongside this
+## What arrives alongside this
+
+The team itself is the **`area54` plugin**, installed from the `tokenfruit`
+marketplace. Its agents, commands, hooks and tools are not files in this repo —
+they live in the plugin, and `claude plugin update area54` is how a fix reaches
+you. Run `claude plugin details area54` to see exactly what loaded.
 
 | | |
 | --- | --- |
-| `.claude/agents/` | eight role-scoped agents |
-| `.claude/commands/` | `/groom` `/design` `/build` `/review` `/ship` `/status` |
+| the plugin | eight role-scoped agents, `/groom` `/design` `/build` `/review` `/ship` `/status` `/deliver`, the shell guard, the event recorder, and `merge-gate` on PATH |
+| `.claude/settings.json` | the permission list, and the two keys that install the plugin |
 | `docs/specs/` `docs/adr/` `docs/design/` | where the team's artefacts land |
-| `.claude/TEAM_VERSION` | which area54 commit this came from |
+| `.claude/TEAM_VERSION` | which area54 commit and plugin version this came from |
 
 **This project's stack, conventions, and test commands live in its own
 `CLAUDE.md`.** The team ships the roles; the project supplies the context. Where
@@ -153,7 +158,7 @@ The merge is the one irreversible step in the pipeline, so it is the one gate
 that is **code rather than judgement**:
 
 ```
-python -m tools.merge_gate <pr> --repo <owner/name>
+merge-gate <pr> --repo <owner/name>
 ```
 
 | It checks | Because |

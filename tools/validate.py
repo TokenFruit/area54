@@ -20,6 +20,8 @@ from tools.commands import (
 )
 from tools.constitution import ConstitutionError
 from tools.constitution import validate as validate_constitution
+from tools.plugin import PluginError, load_plugin
+from tools.plugin import validate as validate_plugin
 from tools.settings import SettingsError
 from tools.settings import validate as validate_settings
 
@@ -43,10 +45,15 @@ def main() -> int:
     try:
         agents = load_agents()
         commands = load_commands()
+        manifest = load_plugin()
         failures = (
-            validate_agents() + validate_commands() + validate_settings() + validate_constitution()
+            validate_agents()
+            + validate_commands()
+            + validate_settings()
+            + validate_constitution()
+            + validate_plugin()
         )
-    except (AgentDefinitionError, SettingsError, ConstitutionError) as exc:
+    except (AgentDefinitionError, SettingsError, ConstitutionError, PluginError) as exc:
         print(f"::error::{exc}")
         return 1
 
@@ -56,7 +63,10 @@ def main() -> int:
         print(f"\n{len(failures)} problem(s) found.")
         return 1
 
-    print(f"{len(agents)} agents, {len(commands)} commands, settings and constitution valid.")
+    print(
+        f"{manifest['name']} v{manifest['version']}: {len(agents)} agents, "
+        f"{len(commands)} commands, settings, constitution and packaging valid."
+    )
     for agent in agents:
         print(f"  {agent.name:18} {agent.model:18} {', '.join(agent.tools)}")
     print()

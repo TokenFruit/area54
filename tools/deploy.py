@@ -1,14 +1,29 @@
 """Install the team into a target repository.
 
-area54 is not yet packaged as a Claude Code plugin (TF-003), so deployment is a
-copy. That makes drift the thing to design against: a copied file can be edited
-in the target, and then the next deployment silently reverts it, or worse does
-not and the two repos quietly disagree about how the team works.
+The team travels as a **Claude Code plugin** (`.claude-plugin/plugin.json`), so
+the agents, the slash commands, the hooks and the merge gate are no longer
+copied anywhere. A target repo names the marketplace and enables the plugin;
+a prompt fix reaches every repo by version bump.
 
-Three defences. Every installed file is recorded with the area54 commit it came
-from, so `--check` can tell you what is stale. Local edits are detected and
-reported rather than overwritten without comment. And the installed constitution
-opens by saying it is deployed and must not be edited here.
+What still has to be written into the target, and why each one resists the
+plugin mechanism:
+
+* ``.claude/settings.json`` — the permission allow-list. `plugin.json` accepts a
+  ``settings`` record and `claude plugin validate` passes it, but the runtime
+  ignores it: on CLI 2.1.241 a plugin-declared ``deny`` did not block the
+  command it named. Half the pipeline's autonomy lives in this list, so it is
+  written as a settings file, not trusted to the manifest. The same file carries
+  the two keys that install the plugin.
+* ``.claude/TEAM.md`` — the constitution. A plugin cannot ship project context;
+  `claude plugin validate` says as much and points at skills instead, which load
+  on demand rather than always. Until that is designed, the constitution is a
+  file.
+* ``.github/pull_request_template.md`` — GitHub reads it from the repo.
+
+That leaves eighteen files that used to be copied and are not any more. Drift is
+still the thing to design against for the three that remain: every written file
+is recorded with the area54 commit it came from, local edits are reported rather
+than overwritten, and the constitution opens by saying it is deployed.
 
     python -m tools.deploy /path/to/repo --dry-run
     python -m tools.deploy /path/to/repo
@@ -18,9 +33,8 @@ opens by saying it is deployed and must not be edited here.
 from __future__ import annotations
 
 import argparse
-import filecmp
 import hashlib
-import shutil
+import json
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -28,20 +42,13 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-#: What a target repo receives. Everything else stays in area54.
+#: The marketplace a target repo installs the team from, and the plugin in it.
+#: Both names are read back out of the checked-in manifests rather than spelled
+#: twice — a marketplace whose name drifts from its manifest installs nothing.
+MARKETPLACE_SOURCE = {"source": "github", "repo": "TokenFruit/area54"}
+
+#: Files copied verbatim. Everything the plugin can carry is not in this list.
 PAYLOAD: tuple[tuple[str, str], ...] = (
-    (".claude/agents", ".claude/agents"),
-    (".claude/commands", ".claude/commands"),
-    # Without this the team arrives unable to run the project's own tests, and
-    # an honest agent stops and says it could not verify its work. Half of the
-    # pipeline's autonomy lives in this file.
-    (".claude/settings.json", ".claude/settings.json"),
-    # The settings file references these by path; deploying one without the
-    # other leaves a hook configured and missing.
-    (".claude/hooks", ".claude/hooks"),
-    # devops runs the gate in the target repo, so the gate has to be there.
-    # It imports only the standard library, precisely so it can travel.
-    ("tools/merge_gate.py", ".claude/tools/merge_gate.py"),
     ("team/TEAM.md", ".claude/TEAM.md"),
     (".github/pull_request_template.md", ".github/pull_request_template.md"),
 )
@@ -50,6 +57,10 @@ PAYLOAD: tuple[tuple[str, str], ...] = (
 ARTEFACT_DIRS = ("docs/specs", "docs/adr", "docs/design")
 
 VERSION_FILE = ".claude/TEAM_VERSION"
+SETTINGS_FILE = ".claude/settings.json"
+
+PLUGIN_MANIFEST = REPO_ROOT / ".claude-plugin" / "plugin.json"
+MARKETPLACE_MANIFEST = REPO_ROOT / ".claude-plugin" / "marketplace.json"
 
 
 class DeployError(Exception):
@@ -61,7 +72,55 @@ class Change:
     """One file the installer would write."""
 
     path: str
-    kind: str  # "new" | "update" | "unchanged" | "locally-edited"
+    kind: str  # "new" | "update" | "unchanged" | "locally-edited" | "conflict"
+
+
+def plugin_manifest() -> dict[str, object]:
+    """Return the plugin manifest area54 ships as."""
+    try:
+        data = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:  # pragma: no cover - the file is committed
+        raise DeployError(f"plugin manifest missing: {PLUGIN_MANIFEST}") from exc
+    if not isinstance(data, dict):
+        raise DeployError(f"{PLUGIN_MANIFEST.name}: not a mapping.")
+    return data
+
+
+def marketplace_manifest() -> dict[str, object]:
+    """Return the marketplace manifest area54 publishes itself through."""
+    try:
+        data = json.loads(MARKETPLACE_MANIFEST.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:  # pragma: no cover - the file is committed
+        raise DeployError(f"marketplace manifest missing: {MARKETPLACE_MANIFEST}") from exc
+    if not isinstance(data, dict):
+        raise DeployError(f"{MARKETPLACE_MANIFEST.name}: not a mapping.")
+    return data
+
+
+def plugin_reference() -> str:
+    """Return the ``plugin@marketplace`` id a target repo enables."""
+    return f"{plugin_manifest()['name']}@{marketplace_manifest()['name']}"
+
+
+def target_settings() -> str:
+    """Return the settings file a target repo receives.
+
+    Generated rather than copied. area54's own settings install the plugin from
+    the working copy — a relative directory source, so the file is
+    machine-independent and can be committed. A target repo installs the same
+    plugin from GitHub. The permission list is identical in both, and that is
+    the point: the rules an agent runs under here are the rules it runs under
+    anywhere.
+    """
+    ours = json.loads((REPO_ROOT / SETTINGS_FILE).read_text(encoding="utf-8"))
+    marketplace = str(marketplace_manifest()["name"])
+    settings = {
+        "$schema": ours["$schema"],
+        "extraKnownMarketplaces": {marketplace: {"source": MARKETPLACE_SOURCE}},
+        "enabledPlugins": {plugin_reference(): True},
+        "permissions": ours["permissions"],
+    }
+    return json.dumps(settings, indent=2) + "\n"
 
 
 def source_version() -> str:
@@ -78,8 +137,12 @@ def source_version() -> str:
     return result.stdout.strip()
 
 
+def _digest_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()[:16]
+
+
 def _digest(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+    return _digest_bytes(path.read_bytes())
 
 
 def read_manifest(target: Path) -> dict[str, str]:
@@ -121,31 +184,32 @@ def ensure_target_is_safe(target: Path) -> None:
         )
 
 
-def _file_pairs() -> list[tuple[Path, str]]:
-    """Return every (source file, target-relative path) the payload expands to."""
-    pairs: list[tuple[Path, str]] = []
+def _file_contents() -> list[tuple[bytes, str]]:
+    """Return every (content, target-relative path) the installation writes."""
+    contents: list[tuple[bytes, str]] = []
     for src_rel, dst_rel in PAYLOAD:
         src = REPO_ROOT / src_rel
         if src.is_dir():
             for path in sorted(src.rglob("*")):
                 if path.is_file():
-                    pairs.append((path, f"{dst_rel}/{path.relative_to(src)}"))
+                    contents.append((path.read_bytes(), f"{dst_rel}/{path.relative_to(src)}"))
         elif src.is_file():
-            pairs.append((src, dst_rel))
+            contents.append((src.read_bytes(), dst_rel))
         else:
             raise DeployError(f"payload entry missing from area54: {src_rel}")
-    return pairs
+    contents.append((target_settings().encode("utf-8"), SETTINGS_FILE))
+    return contents
 
 
 def plan(target: Path) -> list[Change]:
     """Return what an installation would do, without doing it."""
     manifest = read_manifest(target)
     changes: list[Change] = []
-    for src, rel in _file_pairs():
+    for data, rel in _file_contents():
         dst = target / rel
         if not dst.exists():
             changes.append(Change(rel, "new"))
-        elif filecmp.cmp(src, dst, shallow=False):
+        elif dst.read_bytes() == data:
             changes.append(Change(rel, "unchanged"))
         elif rel not in manifest:
             # Present, different, and not ours: the target had its own before we
@@ -181,10 +245,10 @@ def install(target: Path, force: bool = False) -> list[Change]:
             "redeploy, or pass --force to discard the local edits."
         )
 
-    for src, rel in _file_pairs():
+    for data, rel in _file_contents():
         dst = target / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dst)
+        dst.write_bytes(data)
 
     for directory in ARTEFACT_DIRS:
         (target / directory).mkdir(parents=True, exist_ok=True)
@@ -192,12 +256,15 @@ def install(target: Path, force: bool = False) -> list[Change]:
         if not keep.exists():
             keep.write_text("", encoding="utf-8")
 
+    version = str(plugin_manifest()["version"])
     lines = [
         f"# The Token Fruit engineering team, installed from area54 @ {source_version()}",
+        f"# The team itself is the {plugin_reference()} plugin, version {version}.",
+        "# Update it with: claude plugin update area54",
         "# Do not edit these files here. Change them in area54 and redeploy.",
         "# Regenerate with: python -m tools.deploy <this repo>",
     ]
-    lines += [f"{_digest(target / rel)} {rel}" for _, rel in _file_pairs()]
+    lines += [f"{_digest_bytes(data)} {rel}" for data, rel in _file_contents()]
     (target / VERSION_FILE).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     return [c for c in changes if c.kind != "unchanged"]
@@ -237,6 +304,10 @@ def main(argv: list[str] | None = None) -> int:
     for change in sorted(pending, key=lambda c: (c.kind, c.path)):
         print(f"  {change.kind:15} {change.path}")
     print(f"\nInstalled the team into {target.name} from area54 @ {source_version()}.")
+    print(
+        f"The team arrives as the {plugin_reference()} plugin. Start a session in "
+        f"{target.name} and run `claude plugin details area54` to confirm it loaded."
+    )
     print(f"Review the diff and commit it in {target.name}.")
     return 0
 

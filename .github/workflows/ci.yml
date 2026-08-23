@@ -88,7 +88,11 @@ jobs:
       - name: Test
         run: pytest
 
-      - name: Agent and command definitions
+      # Also the packaging. `claude plugin validate` is the authority on the
+      # manifests but needs the CLI and a session, which CI has neither of;
+      # tools/plugin.py checks the part that fails silently — manifests that
+      # validate and load nothing.
+      - name: Agent, command and packaging definitions
         run: python tools/validate.py
 
       # Loading the eval cases is free and deterministic. Running them is not,

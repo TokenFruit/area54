@@ -17,7 +17,7 @@ import yaml
 
 from tools.agents import FRONTMATTER, KNOWN_TOOLS, AgentDefinitionError
 
-COMMANDS_DIR = Path(__file__).resolve().parent.parent / ".claude" / "commands"
+COMMANDS_DIR = Path(__file__).resolve().parent.parent / "commands"
 
 #: The house convention for delegating: ``**agent-name** subagent``.
 #:

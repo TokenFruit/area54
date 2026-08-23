@@ -31,7 +31,7 @@ from tools.merge_gate import (
 )
 
 _spec = importlib.util.spec_from_file_location(
-    "guard_bash", Path(__file__).resolve().parent.parent / ".claude" / "hooks" / "guard_bash.py"
+    "guard_bash", Path(__file__).resolve().parent.parent / "hooks" / "guard_bash.py"
 )
 assert _spec and _spec.loader
 guard = importlib.util.module_from_spec(_spec)

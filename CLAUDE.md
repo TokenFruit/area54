@@ -32,7 +32,7 @@ that executes on a developer's machine or in CI.
 
 | | |
 | --- | --- |
-| Distribution | Claude Code plugin, from a private marketplace repo |
+| Distribution | Claude Code plugin. The repo is the plugin **and** its own marketplace: `.claude-plugin/`, with components discovered by convention from `agents/`, `commands/`, `hooks/`, `bin/` |
 | Agent artefacts | Markdown with YAML frontmatter; JSON manifest |
 | Tooling language | Python 3.12, managed with `uv` |
 | Lint / format | `ruff` |
@@ -53,7 +53,7 @@ preference — or, if the stack is open, chooses on its own expertise and defend
 it against the two strongest alternatives it rejected. Either way the CPO
 approves the ADR before it is accepted. **Once that ADR exists the decision is
 recorded and the question is not asked again**: the Architect reads it. See
-[`.claude/agents/architect.md`](.claude/agents/architect.md).
+[`agents/architect.md`](agents/architect.md).
 
 ## Commands
 
