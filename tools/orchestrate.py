@@ -4,21 +4,15 @@
 step, but nothing executes them: a human reads the prose and decides to comply.
 In one day that produced six skipped steps — `/review` never run on two PRs, a
 handoff announced and never sent, four PRs left in draft after CI went green.
-Every one of those is mechanically visible in GitHub.
 
-So this derives state rather than storing it. There is no state file, and that
-is deliberate: every drift bug in this repo came from state living somewhere
-that could disagree with reality. A spec on disk, its Status line, an ADR, a
-branch, a PR's draft flag, its verdicts and its check conclusions are the truth,
-and they are all readable on demand.
+So this derives state rather than storing it. There is no state file: every drift
+bug here came from state that could disagree with reality. The roadmap, a spec's
+Status line, an ADR, a branch, a PR's flags, verdicts and checks are the truth.
 
-    python -m tools.orchestrate status --repo owner/name
-    python -m tools.orchestrate next --repo owner/name
-    python -m tools.orchestrate next --repo owner/name --run
+    python -m tools.orchestrate {status,next} --repo owner/name [--run]
 
-`--run` dispatches exactly one action and stops. It may run an agent and it may
-mark a PR ready for review. It never merges: the merge gate and the shell guard
-own that step, and nothing here may go around them.
+`--run` dispatches exactly one action and stops — an agent, or marking a PR
+ready. It never merges: the merge gate and the shell guard own that step.
 """
 
 from __future__ import annotations
@@ -40,9 +34,9 @@ TF = re.compile(r"\bTF-(\d+)\b", re.IGNORECASE)
 BRANCH_TF = re.compile(r"^(?:origin/)?tf-(\d+)-", re.IGNORECASE)
 SPEC_STATUS = re.compile(r"^\*\*Status:\*\*\s*([A-Za-z]+)", re.MULTILINE)
 
-#: Which Builder owns a fix. The split between the two is a judgement about the
-#: diff that this cannot make, so it names the backend and leaves the swap to
-#: whoever reads the line — the same default `/build` uses when work collides.
+#: Which Builder owns a fix. The split is a judgement about the diff that this
+#: cannot make, so it names the backend — the default `/build` uses — and leaves
+#: the swap to whoever reads the line.
 OWNING_BUILDER = "builder-backend"
 
 
@@ -59,6 +53,8 @@ class Item:
     #: The PR body states `No spec: <reason>`, the waiver the merge gate accepts.
     spec_waived: bool = False
     has_adr: bool = False
+    #: The roadmap's `Done` section ticks this item off. Outranks every other signal.
+    done: bool = False
     branch: str | None = None
     pr: dict[str, object] = field(default_factory=dict)
 
@@ -68,8 +64,7 @@ class Action:
     """What the sequence says happens next for one item.
 
     ``kind`` is what would run it: ``agent`` dispatches a role, ``ready`` marks
-    the PR ready for review, ``cpo`` is one of the two gates and is never
-    dispatched, ``wait`` is something already in flight elsewhere.
+    the PR ready, ``cpo`` is a gate and is never dispatched, ``wait`` is elsewhere.
     """
 
     stage: str
@@ -95,11 +90,19 @@ def _number(tf: str) -> str:
     return str(int(match.group(1))) if match else tf
 
 
-def fetch(repo: str, root: Path = REPO_ROOT) -> list[Item]:
-    """Read every in-flight item's state from disk and from GitHub.
+def roadmap_done(root: Path = REPO_ROOT) -> set[str]:
+    """Every TF number the roadmap's `Done` section ticks off. See `in_flight`."""
+    path = root / "docs" / "roadmap.md"
+    section = path.read_text(encoding="utf-8").partition("\n## Done")[2] if path.exists() else ""
+    ticked = [ln for ln in section.partition("\n## ")[0].splitlines() if ln.startswith("- [x]")]
+    return {_number(match.group(0)) for ln in ticked if (match := TF.search(ln))}
 
-    Kept apart from `evaluate` so the decisions can be tested against fixture
-    dicts without a live `gh`, exactly as the merge gate separates the two.
+
+def fetch(repo: str, root: Path = REPO_ROOT) -> list[Item]:
+    """Read every item's state from disk and from GitHub.
+
+    Kept apart from the decisions so those can be tested against fixture dicts
+    without a live `gh`, exactly as the merge gate separates the two.
     """
     specs: dict[str, str | None] = {}
     for path in sorted((root / "docs" / "specs").glob("TF-*.md")):
@@ -107,11 +110,8 @@ def fetch(repo: str, root: Path = REPO_ROOT) -> list[Item]:
         match = SPEC_STATUS.search(text)
         specs[_number(path.stem)] = match.group(1) if match else None
 
-    adrs = {
-        key
-        for path in (root / "docs" / "adr").glob("*.md")
-        for key in {_number(m.group(0)) for m in TF.finditer(path.read_text(encoding="utf-8"))}
-    }
+    adr = (root / "docs" / "adr").glob("*.md")
+    adrs = {_number(m.group(0)) for p in adr for m in TF.finditer(p.read_text(encoding="utf-8"))}
 
     branches: dict[str, str] = {}
     listed = subprocess.run(  # noqa: S603
@@ -136,6 +136,7 @@ def fetch(repo: str, root: Path = REPO_ROOT) -> list[Item]:
         pr["comments"] = fetch_comments(int(pr["number"]), repo)
         prs[_number(found.group(1))] = pr
 
+    done = roadmap_done(root)
     keys = sorted(set(specs) | set(branches) | set(prs), key=int)
     return [
         Item(
@@ -143,6 +144,7 @@ def fetch(repo: str, root: Path = REPO_ROOT) -> list[Item]:
             spec_status=specs.get(key),
             spec_waived=bool(NO_SPEC_WAIVER.search(str(prs.get(key, {}).get("body") or ""))),
             has_adr=key in adrs,
+            done=key in done,
             branch=branches.get(key),
             pr=prs.get(key, {}),
         )
@@ -151,10 +153,10 @@ def fetch(repo: str, root: Path = REPO_ROOT) -> list[Item]:
 
 
 def fetch_comments(pr: int, repo: str) -> list[dict[str, str]]:
-    """Return every comment and review body on *pr*, with the time it landed.
+    """Every comment and review body on *pr*, with the time it landed.
 
-    The timestamp is what makes a stalled handoff visible: a verdict requesting
-    changes with no commit after it is a defect nobody picked up.
+    The timestamp is what makes a stalled handoff visible: changes requested
+    with no commit after them is a defect nobody picked up.
     """
     comments = json.loads(_gh(["api", f"repos/{repo}/issues/{pr}/comments"]))
     reviews = json.loads(_gh(["api", f"repos/{repo}/pulls/{pr}/reviews"]))
@@ -168,8 +170,7 @@ def fetch_comments(pr: int, repo: str) -> list[dict[str, str]]:
 def ci_state(pr: dict[str, object]) -> str:
     """One of `green`, `failing`, `pending`, `none`.
 
-    No checks reported is `none`, never `green` — the same refusal the merge
-    gate makes, for the same reason.
+    No checks reported is `none`, never `green` — the merge gate's own refusal.
     """
     rollup = pr.get("statusCheckRollup")
     if not isinstance(rollup, list) or not rollup:
@@ -186,14 +187,9 @@ def ci_state(pr: dict[str, object]) -> str:
     return "failing"
 
 
-def _comments(pr: dict[str, object]) -> list[dict[str, str]]:
-    raw = pr.get("comments", [])
-    return [c for c in raw if isinstance(c, dict)] if isinstance(raw, list) else []
-
-
 #: What each role's verdict looks like, borrowed from the merge gate so the two
-#: agree on what a verdict is. A verdict that lives in a transcript does not
-#: exist — not to the next reader, not to the gate, and not here.
+#: agree. A verdict that lives in a transcript does not exist — not to the next
+#: reader, not to the gate, not here.
 VERDICTS: dict[str, tuple[re.Pattern[str], ...]] = {
     "Lead": (LEAD_APPROVE, LEAD_REJECT),
     "Tester": (TESTER_VERDICT,),
@@ -202,7 +198,9 @@ VERDICTS: dict[str, tuple[re.Pattern[str], ...]] = {
 
 def latest_verdict(pr: dict[str, object], role: str) -> dict[str, str] | None:
     """The most recent verdict *role* posted to the PR, or None."""
-    found = [c for c in _comments(pr) if any(p.search(c["body"]) for p in VERDICTS[role])]
+    raw = pr.get("comments", [])
+    comments = [c for c in raw if isinstance(c, dict)] if isinstance(raw, list) else []
+    found = [c for c in comments if any(p.search(c["body"]) for p in VERDICTS[role])]
     return found[-1] if found else None
 
 
@@ -212,15 +210,10 @@ def missing_verdicts(pr: dict[str, object]) -> list[str]:
 
 
 def latest_commit(pr: dict[str, object]) -> str:
-    """The most recent commit timestamp on the PR, as GitHub reports it.
-
-    ISO-8601 in UTC from both endpoints, so ordering is a string comparison.
-    """
-    commits = pr.get("commits")
-    if not isinstance(commits, list):
-        return ""
-    dates = [str(c.get("committedDate") or "") for c in commits if isinstance(c, dict)]
-    return max(dates, default="")
+    """The most recent commit timestamp: ISO-8601 UTC, so ordering is a string compare."""
+    raw = pr.get("commits")
+    commits = [c for c in raw if isinstance(c, dict)] if isinstance(raw, list) else []
+    return max((str(c.get("committedDate") or "") for c in commits), default="")
 
 
 def changes_requested(pr: dict[str, object]) -> bool:
@@ -251,14 +244,9 @@ def stalls(item: Item) -> list[str]:
 def next_action(item: Item) -> Action:
     """The dispatch table: in state X, on condition Y, the next action is Z.
 
-    Ordered — the first clause that holds decides, so the earlier a clause sits
-    the more it takes precedence. It follows `## How the work flows` and the
-    seven command files.
-
-    Where those two are ambiguous — the diagram draws the gates and Lead/Tester
-    *before* "PR opened", while `/build` opens a draft PR as its last step and
-    `/review` reviews an open one — this takes the commands' reading: the draft
-    PR opens first, and the review runs against it.
+    Ordered — the first clause that holds decides. It follows `## How the work
+    flows` and the seven command files; where those are ambiguous it takes the
+    commands' reading: the draft PR opens first, and `/review` runs against it.
     """
     pr, ci = item.pr, ci_state(item.pr)
     if item.spec_status is None and not item.spec_waived:
@@ -302,8 +290,7 @@ def next_action(item: Item) -> Action:
             "latest Lead verdict requests changes, and no commit since",
             "agent",
             OWNING_BUILDER,
-            f"Address the Lead's findings on the PR for {item.tf}, then hand it back to the "
-            f"lead and the tester. Never edit the failing test.",
+            f"Address the Lead's findings on the PR for {item.tf}. Never edit the failing test.",
         )
     # "PRs open as draft, and are marked ready only when CI is green."
     if pr.get("isDraft") and ci == "green":
@@ -313,11 +300,10 @@ def next_action(item: Item) -> Action:
             "In review",
             f"no {' or '.join(missing)} verdict on the PR",
             "agent",
-            # `/review` runs both in parallel; `--run` dispatches one at a time,
-            # so the Lead goes first and the next run picks the Tester up.
+            # `/review` runs both in parallel; `--run` dispatches one at a time.
             "lead" if "Lead" in missing else "tester",
-            f"Review the PR for {item.tf}, following .claude/commands/review.md. Post your "
-            f"verdict to the PR — a verdict in a transcript does not exist.",
+            f"Review the PR for {item.tf}, following .claude/commands/review.md. Post the "
+            f"verdict to the PR — one in a transcript does not exist.",
         )
     if ci != "green":
         return Action("In review", f"CI is {ci}", "wait")
@@ -325,26 +311,23 @@ def next_action(item: Item) -> Action:
 
 
 def in_flight(items: list[Item]) -> list[Item]:
-    """Drop what is finished: shipped specs, and branches left behind by a merge.
+    """Drop what is finished. The roadmap decides first; everything else after.
 
-    A local branch that outlived its merged PR carries a TF number and nothing
-    else. Reporting it as work needing a spec is noise, and noise is how the
-    published sequence stopped being read in the first place.
+    A `- [x]` line is the CPO saying the work shipped, and it outranks a branch,
+    a PR and a spec alike — TF-019 shipped in #23 and its two undeleted branches
+    went on reporting it as Building, which under `--run` dispatches a Builder at
+    finished work. A branch is evidence a branch was never deleted, nothing more.
     """
-    return [
-        i
-        for i in items
-        if i.pr or (i.spec_status is not None and i.spec_status.lower() != "shipped")
-    ]
+    unfinished = [i for i in items if not i.done]
+    return [i for i in unfinished if i.pr or (i.spec_status or "").lower() not in {"", "shipped"}]
 
 
 def dispatch(action: Action, item: Item, repo: str) -> list[str]:
     """Return the argv that performs *action*, or refuse.
 
-    Two kinds are dispatchable and no others. Nothing here may merge: the merge
-    gate plus the shell guard own that step, and an orchestrator that could
-    reach around them would undo the one gate that is code rather than
-    judgement.
+    Two kinds are dispatchable and no others. Nothing here may merge: the gate
+    and the shell guard own that step, and reaching around them would undo the
+    one gate that is code rather than judgement.
     """
     if action.kind == "ready":
         argv = ["gh", "pr", "ready", str(item.pr.get("number")), "--repo", repo]

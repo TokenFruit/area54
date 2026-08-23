@@ -8,6 +8,8 @@ from fetching, so none of this touches a live `gh`.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from tools.orchestrate import (
@@ -19,8 +21,25 @@ from tools.orchestrate import (
     dispatch,
     in_flight,
     next_action,
+    roadmap_done,
     stalls,
 )
+
+ROADMAP = """# Roadmap
+
+## Now
+
+- [ ] TF-021 — The orchestrator. Nothing checks that a handoff happened
+
+## Done
+
+- [x] **TF-019** — The escalation contract: two closed lists in TEAM.md — 2026-08-23
+- [x] **TF-009** — First real feature end to end: TF-001 shipped through review
+
+---
+
+### How an item moves
+"""
 
 GREEN = [{"name": "Typecheck / Lint / Test", "conclusion": "SUCCESS"}]
 LEAD_OK = "## Lead review\n\n**Verdict: Approve.** 0 blockers, 0 majors."
@@ -243,6 +262,31 @@ def test_shipped_items_with_no_open_pr_drop_out() -> None:
 def test_a_shipped_spec_with_an_open_pr_stays_in_flight() -> None:
     shipped = item(spec_status="Shipped")
     assert in_flight([shipped]) == [shipped]
+
+
+def test_the_roadmap_done_section_is_read_and_the_open_ones_are_not(tmp_path: Path) -> None:
+    """A `- [x]` line is finished. A `- [ ]` line is exactly the opposite."""
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "roadmap.md").write_text(ROADMAP, encoding="utf-8")
+    assert roadmap_done(tmp_path) == {"19", "9"}
+
+
+def test_a_roadmap_with_no_done_section_ticks_nothing_off(tmp_path: Path) -> None:
+    assert roadmap_done(tmp_path) == set()
+
+
+def test_a_done_item_is_not_in_flight_whatever_a_leftover_branch_says() -> None:
+    """The TF-019 defect: two undeleted branches reported shipped work as Building."""
+    shipped = item(spec_status="Approved", branch="tf-019-design", done=True, pr={})
+    assert in_flight([shipped]) == []
+
+
+def test_done_outranks_an_open_pr_too() -> None:
+    assert in_flight([item(done=True)]) == []
+
+
+def test_an_item_the_roadmap_has_not_ticked_off_stays_in_flight() -> None:
+    assert in_flight([item()]) == [item()]
 
 
 def test_a_branch_left_behind_by_a_merge_is_not_work() -> None:
