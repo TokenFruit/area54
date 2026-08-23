@@ -230,3 +230,35 @@ def test_the_merge_gate_imports_only_the_standard_library() -> None:
     )
     assert "from tools." not in source
     assert "import tools" not in source
+
+
+# --- the merge authorisation is never committable -------------------------
+
+
+def test_a_merge_authorisation_is_never_tracked() -> None:
+    """A committed authorisation would be a merge permit living in the repo.
+
+    `tools/merge_gate.py` writes one on a pass and `guard_bash.py` reads it to
+    permit exactly one `gh pr merge`. It is short-lived and machine-local. It
+    showed up as untracked the first time the gate passed for real, which is
+    the only reason anyone noticed it was not ignored.
+
+    This asks git rather than reading `.gitignore`, so a rule that is present
+    but ineffective still fails.
+    """
+    import subprocess
+
+    from tools.merge_gate import TOKEN_DIR, TOKEN_NAME
+
+    root = Path(__file__).resolve().parent.parent
+    relative = f"{TOKEN_DIR}/{TOKEN_NAME}"
+    done = subprocess.run(
+        ["git", "-C", str(root), "check-ignore", "-q", relative],
+        capture_output=True,
+        check=False,
+    )
+    assert done.returncode == 0, (
+        f"{relative} is not ignored by git. The merge gate writes one on every "
+        f"pass; committing it would put a merge permit in the repo and deploy it "
+        f"to every target."
+    )
