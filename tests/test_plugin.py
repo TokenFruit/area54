@@ -1,11 +1,10 @@
 """Tests for the packaging.
 
-The failure mode this file exists for is not a broken manifest — `claude plugin
-validate` catches those, and CI cannot run it anyway. It is a manifest that is
-valid, passes the CLI's own validator, and loads **nothing**. Every rule
-asserted here was established by installing the plugin into a scratch repo and
-reading `claude plugin details`, because the schema accepts several shapes the
-runtime ignores.
+CI has no `claude` CLI, so none of these rules can lean on it. Two of them could
+not lean on it anyway: a manifest that is valid, passes the CLI's own validator,
+and loads **nothing**. Every rule asserted here was established by installing
+the plugin into a scratch repo and reading `claude plugin details`, because the
+schema accepts shapes the runtime ignores.
 """
 
 from __future__ import annotations
@@ -130,7 +129,10 @@ def test_an_empty_component_directory_is_caught(tmp_path: Path) -> None:
 def test_an_unwrapped_hooks_file_is_caught(tmp_path: Path) -> None:
     """Measured: without the wrapper, `claude plugin details` reports Hooks (0).
 
-    The guard that stops a push to main would be configured, valid, and absent.
+    The guard that stops a push to main would be configured and absent. The CLI
+    does catch this one when pointed at the plugin manifest — but CI has no CLI,
+    and `claude plugin validate .` here resolves to the marketplace manifest and
+    never reads the hooks.
     """
     path = tmp_path / "hooks.json"
     path.write_text(json.dumps({"PreToolUse": [{"matcher": "Bash"}]}), encoding="utf-8")

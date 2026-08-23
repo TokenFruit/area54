@@ -127,7 +127,18 @@ def main() -> int:
     except (json.JSONDecodeError, ValueError):
         return 0  # Never block because the hook itself failed to parse.
 
-    command = str(payload.get("tool_input", {}).get("command", ""))
+    # Every shape but "a mapping holding a mapping" is treated as no command.
+    # `payload.get(...)` on a list, or `.get("command")` on a null `tool_input`,
+    # raises — and a PreToolUse hook that raises is a non-blocking error, so the
+    # command it was asked about runs. The guard failing open is the one way it
+    # can be worse than absent.
+    if not isinstance(payload, dict):
+        return 0
+    tool_input = payload.get("tool_input")
+    if not isinstance(tool_input, dict):
+        return 0
+
+    command = str(tool_input.get("command", ""))
     if not command:
         return 0
 

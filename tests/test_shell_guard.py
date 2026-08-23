@@ -71,3 +71,46 @@ def test_a_hard_reset_is_blocked() -> None:
 def test_unparseable_quoting_still_gets_checked() -> None:
     """A broken quote must not become a way through."""
     assert guard.blocks("git push -u origin main 'unclosed") is not None
+
+
+# --- the guard must not fail open ----------------------------------------
+
+
+@pytest.mark.parametrize(
+    "payload",
+    ['{"tool_input": null}', "[]", '"a string"', "null", "{}", '{"tool_input": []}'],
+)
+def test_a_malformed_payload_does_not_crash_the_guard(payload: str, tmp_path: Path) -> None:
+    """A PreToolUse hook that raises is a non-blocking error — the command runs.
+
+    So a crash here is not a crash, it is an unguarded shell. The guard now
+    treats every shape but "a mapping holding a mapping" as no command at all.
+    """
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve().parent.parent / "hooks" / "guard_bash.py")],
+        input=payload,
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_a_well_formed_payload_still_blocks(tmp_path: Path) -> None:
+    """The other direction: hardening the parser must not disarm the guard."""
+    import json as _json
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve().parent.parent / "hooks" / "guard_bash.py")],
+        input=_json.dumps({"tool_input": {"command": "git push -u origin main"}}),
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 2
+    assert "refusing to push to 'main'" in result.stderr

@@ -107,6 +107,9 @@ def load_hook_commands(path: Path = HOOKS_PATH) -> list[str]:
     The file wraps its events in a ``hooks`` key. That wrapper is not
     decoration: without it Claude Code loads the file and finds no hooks, which
     is how this one was written the first time.
+
+    :func:`tools.plugin.check_hooks_are_wrapped` is what fails the build on it,
+    and says there why the CLI's own validator is not enough on its own.
     """
     if not path.is_file():
         raise SettingsError(f"hooks file not found: {path}")

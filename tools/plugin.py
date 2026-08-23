@@ -13,10 +13,12 @@ runtime ignores:
 * Components are found by **convention**, not by manifest. An ``agents`` field
   listing files validates and loads zero agents; a top-level ``agents/``
   directory with no manifest field loads all eight.
-* ``hooks/hooks.json`` must wrap its events in a top-level ``hooks`` key.
-  Without the wrapper the file is read and configures nothing.
 * A ``settings`` record in ``plugin.json`` validates and is ignored at load
   time, so the permission list cannot travel that way.
+* ``hooks/hooks.json`` must wrap its events in a top-level ``hooks`` key. This
+  one the CLI *does* catch when pointed at the plugin manifest — but pointed at
+  this repo it validates the marketplace manifest instead and never reaches the
+  hooks, which is what `claude plugin validate .` does by default.
 
 The one warning `--strict` reports here is known and accepted: ``CLAUDE.md`` at
 the plugin root is not loaded as project context. area54's repo root *is* the
@@ -146,9 +148,14 @@ def check_components_exist(root: Path = REPO_ROOT) -> list[str]:
 def check_hooks_are_wrapped(path: Path = HOOKS_MANIFEST) -> list[str]:
     """Return a failure if hooks.json omits its top-level ``hooks`` key.
 
-    Measured: without the wrapper `claude plugin details` reports ``Hooks (0)``
-    and nothing else complains. The guard that stops a push to main would be
-    configured, valid, and absent.
+    Measured: without the wrapper `claude plugin details` reports ``Hooks (0)``,
+    so the guard that stops a push to main would be configured and absent.
+
+    Unlike the other two rules here, the CLI does catch this — `claude plugin
+    validate <path>/.claude-plugin/plugin.json` reports ``hooks: Invalid input:
+    expected record, received undefined``. It is still worth checking, for two
+    reasons: CI has no CLI, and `claude plugin validate .` on this repo resolves
+    to the *marketplace* manifest and never looks at the hooks at all.
     """
     if not path.is_file():
         return [f"{_relative(path)} is missing; the plugin configures no hooks."]
