@@ -17,8 +17,9 @@ worth distributing.
    Roles, tool scoping, model pins, the shell guard, the merge gate. Largely
    done, and defended by CI rather than by good intentions.
 2. **Self-improving** — the team gets better without a human remembering to fix
-   it. Evals reach three of eight agents, nothing reads a transcript, and no
-   agent definition has ever improved except by hand. **This is the work.**
+   it. Evals reach three of eight agents, nothing reads a transcript, no agent
+   definition has ever improved except by hand, and nothing notices when a
+   handoff is skipped. **This is the work.**
 3. **Distributable** — one team across many products, updated by a version bump
    instead of six copy-pastes.
 
@@ -33,6 +34,9 @@ worth distributing.
 - [ ] TF-020 — Learn from the transcripts. Every run leaves one on disk and
       nothing reads it, so an agent definition improves only when a human
       remembers a failure — evidence-gated proposals, never a self-rewrite
+- [ ] TF-021 — Nothing checks that a handoff happened. The sequence is prose an
+      agent chooses to follow, so a skipped step leaves no trace — three went
+      unnoticed in one day. Reconcile verdicts against commits, in code
 - [ ] TF-003 — Package the team as a Claude Code plugin, so a prompt fix reaches
       every product repo by version bump instead of six copy-pastes
 
