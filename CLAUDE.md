@@ -71,10 +71,12 @@ recorded and the question is not asked again**: the Architect reads it. See
 | Deploy to a repo | `python -m tools.deploy <path>` |
 | Check a repo is current | `python -m tools.deploy <path> --check` |
 
-The eval harness is tested and its CLI invocation has been executed for real,
-but **no trial has yet completed**: the CLI's OAuth session is expired, so live
-trials error before reaching the model. Errored trials are reported as
-inconclusive, never as behavioural failures. See `evals/README.md`.
+The eval harness is tested and its CLI invocation has been executed for real.
+Live trials errored before reaching the model while the CLI's OAuth session was
+expired; **that session was re-authenticated on 2026-08-23 and live calls now
+work**. No trial has been run since, so none has yet completed — the blocker is
+gone, the evidence is not yet in. Errored trials are reported as inconclusive,
+never as behavioural failures. See `evals/README.md`.
 
 `claude plugin eval` — the CLI's own, better runner — exists but is in early
 access and not enabled on this account. Migrate to it when access arrives.

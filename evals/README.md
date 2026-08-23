@@ -121,8 +121,9 @@ reporting — is tested, and the CLI invocation has now been **executed for
 real**: the command builds correctly, the fixture is copied, the subprocess
 runs, and the result is scored.
 
-**No trial has yet completed successfully.** The CLI's OAuth session is expired,
-so every live trial so far has errored before reaching the model:
+**No trial has yet completed successfully**, and none has been run since
+2026-08-23, when the CLI's OAuth session was re-authenticated. Every live trial
+before that errored before reaching the model:
 
 ```
 [????] lead-catches-off-by-one    0/0 (need 1), 1 errored
