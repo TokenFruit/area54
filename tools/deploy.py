@@ -45,7 +45,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 #: The marketplace a target repo installs the team from, and the plugin in it.
 #: Both names are read back out of the checked-in manifests rather than spelled
 #: twice — a marketplace whose name drifts from its manifest installs nothing.
-MARKETPLACE_SOURCE = {"source": "github", "repo": "TokenFruit/area54"}
+MARKETPLACE_SOURCE = {"source": "github", "repo": "your-org/area54"}
 
 #: Files copied verbatim. Everything the plugin can carry is not in this list.
 PAYLOAD: tuple[tuple[str, str], ...] = (
@@ -145,7 +145,7 @@ def marketplace_collision(registry: Path = KNOWN_MARKETPLACES) -> str | None:
     """Return a warning if this machine already means something else by the name.
 
     ``extraKnownMarketplaces`` does not create a per-project marketplace. area54
-    registers `tokenfruit` as its own working copy so it can run the team it is
+    registers `area54` as its own working copy so it can run the team it is
     editing; a target repo asks for the same name and gets the working copy
     instead of GitHub — silently, and only on this machine.
 
@@ -401,7 +401,7 @@ def install(target: Path, force: bool = False) -> list[Change]:
 
     version = str(plugin_manifest()["version"])
     lines = [
-        f"# The Token Fruit engineering team, installed from area54 @ {source_version()}",
+        f"# The area54 engineering team, installed from area54 @ {source_version()}",
         f"# The team itself is the {plugin_reference()} plugin, version {version}.",
         "# Update it with: claude plugin update area54",
         "# Do not edit these files here. Change them in area54 and redeploy.",

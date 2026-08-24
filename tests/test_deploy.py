@@ -114,7 +114,7 @@ def test_the_target_is_told_where_the_team_comes_from(tmp_path: Path) -> None:
     # A directory source is how area54 loads its own copy, and is meaningless
     # anywhere else: a target repo has to fetch it.
     assert source["source"] == "github"
-    assert source["repo"] == "TokenFruit/area54"
+    assert source["repo"] == "your-org/area54"
 
 
 def test_the_version_file_records_the_plugin_version(tmp_path: Path) -> None:
@@ -269,7 +269,7 @@ def make_old_target(tmp_path: Path) -> Path:
         ".claude/hooks/record_event.py": "print('x')\n",
         ".claude/tools/merge_gate.py": "print('gate')\n",
     }
-    lines = ["# The Token Fruit engineering team, installed from area54 @ deadbee"]
+    lines = ["# The area54 engineering team, installed from area54 @ deadbee"]
     for rel, body in copied.items():
         path = target / rel
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -337,7 +337,7 @@ def test_a_second_upgrade_is_a_no_op(tmp_path: Path) -> None:
 def test_a_colliding_marketplace_name_is_reported(tmp_path: Path) -> None:
     """Why the first live verification of this installer ran the wrong commit.
 
-    `extraKnownMarketplaces` is not per-project. area54 registers `tokenfruit`
+    `extraKnownMarketplaces` is not per-project. area54 registers `area54`
     as its own working copy; a target asking for the same name gets that copy
     rather than GitHub, silently, because the first registration wins.
     """
@@ -345,9 +345,7 @@ def test_a_colliding_marketplace_name_is_reported(tmp_path: Path) -> None:
 
     registry = tmp_path / "known_marketplaces.json"
     registry.write_text(
-        json.dumps(
-            {"tokenfruit": {"source": {"source": "directory", "path": "/somewhere/area-54"}}}
-        ),
+        json.dumps({"area54": {"source": {"source": "directory", "path": "/somewhere/area-54"}}}),
         encoding="utf-8",
     )
     warning = marketplace_collision(registry)
@@ -360,7 +358,7 @@ def test_a_matching_registration_is_not_reported(tmp_path: Path) -> None:
     from tools.deploy import MARKETPLACE_SOURCE, marketplace_collision
 
     registry = tmp_path / "known_marketplaces.json"
-    registry.write_text(json.dumps({"tokenfruit": {"source": MARKETPLACE_SOURCE}}), "utf-8")
+    registry.write_text(json.dumps({"area54": {"source": MARKETPLACE_SOURCE}}), "utf-8")
     assert marketplace_collision(registry) is None
 
 

@@ -2,10 +2,10 @@
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "area54",
   "version": "0.1.0",
-  "description": "The Token Fruit engineering team: eight role-scoped agents, seven pipeline commands, a shell guard, and a merge gate that is code rather than judgement.",
-  "author": { "name": "Token Fruit" },
-  "homepage": "https://github.com/TokenFruit/area54",
-  "repository": "https://github.com/TokenFruit/area54",
+  "description": "The area54 engineering team: eight role-scoped agents, seven pipeline commands, a shell guard, and a merge gate that is code rather than judgement.",
+  "author": { "name": "area54" },
+  "homepage": "https://github.com/your-org/area54",
+  "repository": "https://github.com/your-org/area54",
   "license": "UNLICENSED",
   "keywords": ["agents", "pipeline", "code-review", "merge-gate"]
 }

@@ -1,8 +1,8 @@
-# The Token Fruit virtual engineering team
+# The area54 virtual engineering team
 
 **This file is deployed. Do not edit it here.**
 
-It is installed from [area54](https://github.com/TokenFruit/area54), the repo
+It is installed from [area54](https://github.com/your-org/area54), the repo
 that builds and maintains this team, and the next deployment overwrites whatever
 you change. If a rule below is wrong for this project, fix it in area54 so every
 project gets the fix — or, if the rule genuinely should differ here, say so in
@@ -10,7 +10,7 @@ this repo's own `CLAUDE.md`, which always wins over this file.
 
 ## What arrives alongside this
 
-The team itself is the **`area54` plugin**, installed from the `tokenfruit`
+The team itself is the **`area54` plugin**, installed from the `area54`
 marketplace. Its agents, commands, hooks and tools are not files in this repo —
 they live in the plugin, and `claude plugin update area54` is how a fix reaches
 you. Run `claude plugin details area54` to see exactly what loaded.

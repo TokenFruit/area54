@@ -55,22 +55,22 @@ def _store_with(tmp_path: Path, cwd: Path, session: str, contents: str = "{}\n")
 
 
 def test_tf022_ac3_same_repo_item_and_role_give_the_same_session_id() -> None:
-    a = session_id("TokenFruit/area54", "TF-022", "lead")
-    b = session_id("TokenFruit/area54", "TF-022", "lead")
+    a = session_id("your-org/area54", "TF-022", "lead")
+    b = session_id("your-org/area54", "TF-022", "lead")
     assert a == b
 
 
 def test_tf022_ac3_session_id_is_a_valid_uuid() -> None:
-    got = session_id("TokenFruit/area54", "TF-022", "lead")
+    got = session_id("your-org/area54", "TF-022", "lead")
     assert str(uuid.UUID(got)) == got, f"{got!r} is not a canonical UUID string"
 
 
 @pytest.mark.parametrize(
     "other",
     [
-        ("TokenFruit/area53", "TF-022", "lead"),  # different repo
-        ("TokenFruit/area54", "TF-021", "lead"),  # different item
-        ("TokenFruit/area54", "TF-022", "tester"),  # different role
+        ("your-org/other-repo", "TF-022", "lead"),  # different repo
+        ("your-org/area54", "TF-021", "lead"),  # different item
+        ("your-org/area54", "TF-022", "tester"),  # different role
     ],
 )
 def test_tf022_ac3_a_different_repo_item_or_role_gives_a_different_session(
@@ -81,14 +81,14 @@ def test_tf022_ac3_a_different_repo_item_or_role_gives_a_different_session(
     A Lead and a Tester sharing a session would each see the other's
     conversation, which is exactly the separation the team's design rests on.
     """
-    base = session_id("TokenFruit/area54", "TF-022", "lead")
+    base = session_id("your-org/area54", "TF-022", "lead")
     assert session_id(*other) != base
 
 
 def test_tf022_ac3_deriving_a_session_id_writes_nothing() -> None:
     """ "Same inputs, same id, nothing stored." No state file was added."""
     before = set(SESSION_STORE.glob("**/*")) if SESSION_STORE.exists() else set()
-    session_id("TokenFruit/area54", "TF-999", "lead")
+    session_id("your-org/area54", "TF-999", "lead")
     after = set(SESSION_STORE.glob("**/*")) if SESSION_STORE.exists() else set()
     assert before == after
 
