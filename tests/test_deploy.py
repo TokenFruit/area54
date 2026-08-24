@@ -345,9 +345,7 @@ def test_a_colliding_marketplace_name_is_reported(tmp_path: Path) -> None:
 
     registry = tmp_path / "known_marketplaces.json"
     registry.write_text(
-        json.dumps(
-            {"area54": {"source": {"source": "directory", "path": "/somewhere/area-54"}}}
-        ),
+        json.dumps({"area54": {"source": {"source": "directory", "path": "/somewhere/area-54"}}}),
         encoding="utf-8",
     )
     warning = marketplace_collision(registry)
