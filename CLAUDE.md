@@ -1,4 +1,4 @@
-# Token Fruit — Team Constitution
+# area54 — Team Constitution
 
 This file is inherited by every agent on this team. It is the single source of
 truth for how we work. If an instruction here conflicts with an agent's own
@@ -6,12 +6,10 @@ prompt, this file wins.
 
 ## What this repo is
 
-**area54 is a virtual software development team powered by agentic AI**, which
-Token Fruit deploys to work on its products.
+**area54 is a virtual software development team powered by agentic AI**,
+deployed to work on software products.
 
 **Which repositories it is deployed into is the CPO's call, never inferred.**
-area54 is independent of Gempli (`area53`) and is **not** deployed there — they
-share the `TokenFruit` org and a naming series, and neither is a dependency.
 
 The team is the product. Read that twice before changing anything: the agents,
 commands, and policies in this repo are not scaffolding around the deliverable,

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "extraKnownMarketplaces": {
-    "tokenfruit": {
+    "area54": {
       "source": {
         "source": "directory",
         "path": "."
@@ -9,7 +9,7 @@
     }
   },
   "enabledPlugins": {
-    "area54@tokenfruit": true
+    "area54@area54": true
   },
   "permissions": {
     "allow": [

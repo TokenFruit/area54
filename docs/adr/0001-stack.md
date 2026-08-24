@@ -6,14 +6,11 @@
 
 ## Context
 
-area54 is a **virtual software development team powered by agentic AI**, which
-Token Fruit deploys to work on its products. The team is the product. Its
+area54 is a **virtual software development team powered by agentic AI**,
+deployed to work on software products. The team is the product. Its
 operator is the CPO, who decides which repositories it is deployed into.
 
-**area54 is independent of Gempli (`area53`) and is not deployed there.** The
-two share the `TokenFruit` org and a naming series, which makes them look
-related; they are not. Deployment targets are named by the CPO, never inferred
-from the org.
+Deployment targets are named by the CPO, never inferred.
 
 This makes the conventional stack question mostly inapplicable. There is no
 server, no database, no browser, no user accounts, and nothing to host. What
@@ -29,15 +26,15 @@ So the real decisions are three, and none of them are "which web framework":
 
 The CPO confirmed the stack is genuinely open (Path 2), so this ADR chooses.
 
-Two existing stacks in the organisation were weighed as defaults. These are
-cited as **prior art for tooling only** — where Token Fruit has already proven a
-toolchain works — and imply nothing about where area54 gets deployed:
-- `area53`: Python — FastAPI, Celery, `mypy --strict`, 105 tests.
-- `area52`: TypeScript — Next.js 15, React 19, Prisma, Vitest.
+Two existing stacks were weighed as defaults. These are cited as **prior art for
+tooling only** — where a toolchain has already been proven to work — and imply
+nothing about where area54 gets deployed:
+- A sibling Python service: FastAPI, Celery, `mypy --strict`, 105 tests.
+- A sibling TypeScript app: Next.js 15, React 19, Prisma, Vitest.
 
 ## Decision
 
-### 1. Distribution: a Claude Code plugin, served from a private marketplace repo
+### 1. Distribution: a Claude Code plugin, served from its own marketplace repo
 
 area54 packages as a **Claude Code plugin**. Target repos install it by name;
 updates arrive by version bump rather than by copy-paste. The plugin carries the
@@ -58,8 +55,8 @@ Supporting tools — frontmatter validators, the policy linter, the eval runner,
 the installer — are Python 3.12, managed with `uv`, checked with `ruff` and
 `mypy --strict`, tested with `pytest`.
 
-Rationale: this is the house language of `area53`, where the discipline is
-already proven — prior art, not a deployment relationship — the work
+Rationale: this is a proven house language for a sibling Python service, where
+the discipline already holds — prior art, not a deployment relationship — the work
 is text processing and subprocess orchestration where Python is strongest, and
 none of this tooling ever ships to an end user's machine — it runs in CI and in
 the maintainer's shell, so runtime distribution is not a constraint.
@@ -116,8 +113,8 @@ The surfaces area54 exposes to a target repo:
 | Dependency | Why | Rejected alternative |
 |---|---|---|
 | `uv` | Fast, lockfile-based, one tool for envs and deps | `pip` + `venv` — slower, no lockfile by default |
-| `ruff` | Lint and format in one, already used in `area53` | `flake8` + `black` — two tools, slower |
-| `mypy --strict` | `area53` proved the discipline holds | `pyright` — fine, but breaks house consistency |
+| `ruff` | Lint and format in one, already used in a sibling project | `flake8` + `black` — two tools, slower |
+| `mypy --strict` | A sibling project proved the discipline holds | `pyright` — fine, but breaks house consistency |
 | `pytest` | House standard | `unittest` — more ceremony, less power |
 | `PyYAML` | Parse agent frontmatter | Hand-rolled parser — a bug factory |
 
@@ -134,7 +131,6 @@ Nothing to migrate — greenfield.
 3. Install into **one** target repo first, named by the CPO. Prefer a repo that
    is real and active and already has a working test suite, so the team's output
    is judged against standards that exist rather than standards it sets itself.
-   **Not `area53`** — area54 is independent of Gempli and is not deployed there.
 4. Only after a full feature ships through it end to end, roll to a second repo.
 
 Rollback at any point is uninstalling the plugin. Target repos are unmodified by
@@ -163,8 +159,8 @@ before CI depends on it.**
 **Two ecosystems.** Python tooling maintaining a Node-ecosystem artefact. Real,
 and accepted: the tooling is CI-side and never crosses into the plugin itself.
 
-**Portfolio inconsistency.** area54 will not look like `area52`'s TypeScript
-line. Also accepted — `area52` is the outlier, `area53` is the house standard.
+**Portfolio inconsistency.** area54 will not match a sibling TypeScript project's
+line. Also accepted — that project is the outlier; Python is the house standard.
 
 ## Alternatives considered
 
@@ -177,15 +173,15 @@ the submodule tax forever.
 
 **TypeScript / Node for tooling.** The strongest rejected option — it matches
 Claude Code's own ecosystem and `npx` distribution is frictionless. Lost on two
-counts: `area53` has the proven `mypy --strict` discipline and this team already
-operates it, and the tooling never leaves CI, so distribution ergonomics buy
+counts: a sibling project has the proven `mypy --strict` discipline and this team
+already operates it, and the tooling never leaves CI, so distribution ergonomics buy
 nothing here. Revisit if the installer ever needs to run on machines without
 Python.
 
-**Go, single static binary** (the approach `no-mistakes` takes). Genuinely
+**Go, single static binary** (a single-static-binary approach). Genuinely
 attractive for a zero-dependency installer. Rejected as premature: there is no
 installer to distribute yet, since the plugin mechanism handles installation.
-Reconsider if area54 ever ships a CLI to non-Token-Fruit users.
+Reconsider if area54 ever ships a CLI to external users.
 
 **A hosted orchestration service** — a web app that runs the team server-side.
 Rejected as a solution to a problem nobody has. It would add a server, a

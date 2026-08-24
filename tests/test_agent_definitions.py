@@ -307,28 +307,28 @@ def _touch_transcript(store: Path, cwd: Path, session: str) -> None:
 
 def test_the_same_role_on_the_same_item_derives_the_same_session() -> None:
     """The whole design rests on this: derived, so nothing has to store it."""
-    first = session_id("TokenFruit/area54", "TF-019", "lead")
-    assert first == session_id("TokenFruit/area54", "TF-019", "lead")
+    first = session_id("your-org/area54", "TF-019", "lead")
+    assert first == session_id("your-org/area54", "TF-019", "lead")
 
 
 @pytest.mark.parametrize(
     "other",
     [
-        ("TokenFruit/area53", "TF-019", "lead"),
-        ("TokenFruit/area54", "TF-021", "lead"),
-        ("TokenFruit/area54", "TF-019", "tester"),
+        ("your-org/other-repo", "TF-019", "lead"),
+        ("your-org/area54", "TF-021", "lead"),
+        ("your-org/area54", "TF-019", "tester"),
     ],
 )
 def test_a_different_repo_item_or_role_derives_a_different_session(
     other: tuple[str, str, str],
 ) -> None:
     """A Lead resuming the Tester's conversation would read its own review back."""
-    assert session_id("TokenFruit/area54", "TF-019", "lead") != session_id(*other)
+    assert session_id("your-org/area54", "TF-019", "lead") != session_id(*other)
 
 
 def test_a_session_the_cli_has_never_seen_is_started(tmp_path: Path) -> None:
     """`--resume` on an unknown id exits 1, so the first round must create."""
-    session = session_id("TokenFruit/area54", "TF-019", "lead")
+    session = session_id("your-org/area54", "TF-019", "lead")
     assert session_flags(session, tmp_path, store=tmp_path / "store") == ["--session-id", session]
 
 
@@ -336,7 +336,7 @@ def test_a_session_the_cli_already_has_is_resumed(tmp_path: Path) -> None:
     """`--session-id` on a known id exits 1, so later rounds must resume."""
     store, cwd = tmp_path / "store", tmp_path / "repo"
     cwd.mkdir()
-    session = session_id("TokenFruit/area54", "TF-019", "lead")
+    session = session_id("your-org/area54", "TF-019", "lead")
     _touch_transcript(store, cwd, session)
     assert session_flags(session, cwd, store=store) == ["--resume", session]
 
@@ -346,7 +346,7 @@ def test_a_session_from_another_directory_is_not_resumed(tmp_path: Path) -> None
     store, cwd, elsewhere = tmp_path / "store", tmp_path / "repo", tmp_path / "other"
     cwd.mkdir()
     elsewhere.mkdir()
-    session = session_id("TokenFruit/area54", "TF-019", "lead")
+    session = session_id("your-org/area54", "TF-019", "lead")
     _touch_transcript(store, elsewhere, session)
     assert session_flags(session, cwd, store=store) == ["--session-id", session]
 

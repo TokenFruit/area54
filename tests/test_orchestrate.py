@@ -262,7 +262,7 @@ def test_a_merged_pr_is_not_work_for_a_builder() -> None:
     assert action.kind == "cpo"
     assert "#23" in action.blocked_on
     with pytest.raises(OrchestratorError, match="not dispatchable"):
-        dispatch(action, lagging, "TokenFruit/area54")
+        dispatch(action, lagging, "your-org/area54")
 
 
 def test_an_open_pr_outranks_an_older_merged_one() -> None:
@@ -391,15 +391,15 @@ def test_an_item_with_no_pr_has_no_stalls() -> None:
 
 
 def test_dispatching_an_agent_uses_the_one_invocation_path() -> None:
-    argv = dispatch(next_action(item(has_adr=False)), item(), "TokenFruit/area54")
+    argv = dispatch(next_action(item(has_adr=False)), item(), "your-org/area54")
     assert argv[0] == "claude"
     assert "--append-system-prompt" in argv
     assert "claude-opus-5" in argv
 
 
 def test_marking_ready_names_the_pr_and_the_repo() -> None:
-    argv = dispatch(Action("In review", "draft", "ready"), item(), "TokenFruit/area54")
-    assert argv == ["gh", "pr", "ready", "42", "--repo", "TokenFruit/area54"]
+    argv = dispatch(Action("In review", "draft", "ready"), item(), "your-org/area54")
+    assert argv == ["gh", "pr", "ready", "42", "--repo", "your-org/area54"]
 
 
 def test_marking_ready_refuses_when_auto_merge_would_merge_it() -> None:
@@ -412,42 +412,42 @@ def test_marking_ready_refuses_when_auto_merge_would_merge_it() -> None:
     action = next_action(armed)
     assert action.kind == "ready"
     with pytest.raises(OrchestratorError, match="auto-merge is enabled"):
-        dispatch(action, armed, "TokenFruit/area54")
+        dispatch(action, armed, "your-org/area54")
 
 
 def test_marking_ready_goes_ahead_when_auto_merge_is_not_set() -> None:
     draft = item(pr=pr(isDraft=True, autoMergeRequest=None))
-    argv = dispatch(next_action(draft), draft, "TokenFruit/area54")
-    assert argv == ["gh", "pr", "ready", "42", "--repo", "TokenFruit/area54"]
+    argv = dispatch(next_action(draft), draft, "your-org/area54")
+    assert argv == ["gh", "pr", "ready", "42", "--repo", "your-org/area54"]
 
 
 def test_a_cpo_gate_refuses_to_be_dispatched() -> None:
     with pytest.raises(OrchestratorError, match="not dispatchable"):
-        dispatch(next_action(item()), item(), "TokenFruit/area54")
+        dispatch(next_action(item()), item(), "your-org/area54")
 
 
 def test_waiting_on_ci_refuses_to_be_dispatched() -> None:
     with pytest.raises(OrchestratorError, match="not dispatchable"):
-        dispatch(Action("In review", "CI is pending", "wait"), item(), "TokenFruit/area54")
+        dispatch(Action("In review", "CI is pending", "wait"), item(), "your-org/area54")
 
 
 def test_an_unknown_agent_refuses_rather_than_guessing() -> None:
     action = Action("Building", "x", "agent", "builder-sideways", "do the thing")
     with pytest.raises(OrchestratorError, match="no agent definition"):
-        dispatch(action, item(), "TokenFruit/area54")
+        dispatch(action, item(), "your-org/area54")
 
 
 def test_nothing_in_the_table_produces_a_merge() -> None:
     """The table's own output, which is the passing direction of the guard below."""
     for state in (item(spec_status=None), item(has_adr=False), item(pr=pr(isDraft=True))):
-        argv = dispatch(next_action(state), state, "TokenFruit/area54")
+        argv = dispatch(next_action(state), state, "your-org/area54")
         assert argv[:3] == ["gh", "pr", "ready"] or argv[:1] == ["claude"]
 
 
 @pytest.mark.parametrize(
     "argv",
     [
-        ["gh", "pr", "merge", "29", "--repo", "TokenFruit/area54"],
+        ["gh", "pr", "merge", "29", "--repo", "your-org/area54"],
         ["gh", "pr", "MERGE", "29"],
         ["gh", "pr", "merge-queue", "add", "29"],
         ["gh", "pr", "--merge", "29"],
@@ -467,13 +467,13 @@ def test_the_guard_refuses_anything_that_is_not_one_of_the_two_shapes(
     monkeypatch.setattr(orchestrate, "cli_invocation", lambda *a, **k: argv)
     action = next_action(item(has_adr=False))
     with pytest.raises(OrchestratorError, match="only `gh pr ready`"):
-        dispatch(action, item(), "TokenFruit/area54")
+        dispatch(action, item(), "your-org/area54")
 
 
 def test_the_guard_lets_an_agent_invocation_through(monkeypatch: pytest.MonkeyPatch) -> None:
     """The passing direction, so the guard cannot be tightened into refusing everything."""
     monkeypatch.setattr(orchestrate, "cli_invocation", lambda *a, **k: ["claude", "-p", "x"])
-    argv = dispatch(next_action(item(has_adr=False)), item(), "TokenFruit/area54")
+    argv = dispatch(next_action(item(has_adr=False)), item(), "your-org/area54")
     assert argv == ["claude", "-p", "x"]
 
 
@@ -550,7 +550,7 @@ def fetched(
 
     monkeypatch.setattr(orchestrate, "_gh", gh)
     monkeypatch.setattr("tools.orchestrate.subprocess.run", git)
-    return fetch("TokenFruit/area54", tmp_path)
+    return fetch("your-org/area54", tmp_path)
 
 
 def test_a_second_pr_on_one_item_keeps_a_row_of_its_own(
@@ -620,10 +620,10 @@ def test_every_comment_is_asked_for_not_the_first_page(monkeypatch: pytest.Monke
         return "[]"
 
     monkeypatch.setattr(orchestrate, "_gh", gh)
-    assert fetch_comments(29, "TokenFruit/area54") == []
+    assert fetch_comments(29, "your-org/area54") == []
     assert asked == [
-        ["api", "--paginate", "repos/TokenFruit/area54/issues/29/comments"],
-        ["api", "--paginate", "repos/TokenFruit/area54/pulls/29/reviews"],
+        ["api", "--paginate", "repos/your-org/area54/issues/29/comments"],
+        ["api", "--paginate", "repos/your-org/area54/pulls/29/reviews"],
     ]
 
 
@@ -742,14 +742,14 @@ def test_a_branch_left_behind_by_a_merge_is_not_work() -> None:
 
 def test_a_dispatched_agent_is_given_its_own_session() -> None:
     """TF-022: the same role on the same item rejoins its own conversation."""
-    argv = dispatch(next_action(item(has_adr=False)), item(has_adr=False), "TokenFruit/area54")
+    argv = dispatch(next_action(item(has_adr=False)), item(has_adr=False), "your-org/area54")
     assert argv[-2] in {"--session-id", "--resume"}
-    assert argv[-1] == session_id("TokenFruit/area54", "TF-021", "architect")
+    assert argv[-1] == session_id("your-org/area54", "TF-021", "architect")
 
 
 def test_two_roles_on_one_item_do_not_share_a_session() -> None:
     """A Lead resuming the Tester's session would read its own review back as fact."""
     awaiting_lead = item(pr=pr(comments=[{"body": TESTER_OK, "at": "2026-08-24T10:05:00Z"}]))
-    argv = dispatch(next_action(awaiting_lead), awaiting_lead, "TokenFruit/area54")
-    assert argv[-1] == session_id("TokenFruit/area54", "TF-021", "lead")
-    assert argv[-1] != session_id("TokenFruit/area54", "TF-021", "tester")
+    argv = dispatch(next_action(awaiting_lead), awaiting_lead, "your-org/area54")
+    assert argv[-1] == session_id("your-org/area54", "TF-021", "lead")
+    assert argv[-1] != session_id("your-org/area54", "TF-021", "tester")

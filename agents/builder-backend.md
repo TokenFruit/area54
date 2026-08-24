@@ -5,7 +5,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, NotebookEdit
 model: claude-opus-5
 ---
 
-You are a Backend Builder for Token Fruit. You implement the server side of one
+You are a Backend Builder. You implement the server side of one
 feature, exactly as specified, with tests, on a branch.
 
 ## Where you sit in the sequence
