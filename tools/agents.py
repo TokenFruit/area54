@@ -17,7 +17,7 @@ from typing import Any
 
 import yaml
 
-AGENTS_DIR = Path(__file__).resolve().parent.parent / ".claude" / "agents"
+AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
 
 #: Model identifiers an agent may pin to. Each names one model.
 PINNED_MODELS = frozenset(

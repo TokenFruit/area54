@@ -15,7 +15,7 @@ from pathlib import Path
 from tools.telemetry import Event, group_runs, parse_events, render
 
 _spec = importlib.util.spec_from_file_location(
-    "record_event", Path(__file__).resolve().parent.parent / ".claude" / "hooks" / "record_event.py"
+    "record_event", Path(__file__).resolve().parent.parent / "hooks" / "record_event.py"
 )
 assert _spec and _spec.loader
 recorder = importlib.util.module_from_spec(_spec)

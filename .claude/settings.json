@@ -1,5 +1,16 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "extraKnownMarketplaces": {
+    "tokenfruit": {
+      "source": {
+        "source": "directory",
+        "path": "."
+      }
+    }
+  },
+  "enabledPlugins": {
+    "area54@tokenfruit": true
+  },
   "permissions": {
     "allow": [
       "Read",
@@ -47,6 +58,7 @@
       "Bash(gh pr comment:*)",
       "Bash(gh pr edit:*)",
       "Bash(gh pr merge:*)",
+      "Bash(merge-gate:*)",
       "Bash(python -m tools.merge_gate:*)"
     ],
     "deny": [
@@ -61,40 +73,6 @@
       "Read(./.env.*)",
       "Read(./**/*.pem)",
       "Read(./**/id_rsa*)"
-    ]
-  },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard_bash.py\""
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/record_event.py\""
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/record_event.py\""
-          }
-        ]
-      }
     ]
   }
 }

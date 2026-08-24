@@ -1,0 +1,13 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "tokenfruit",
+  "description": "Token Fruit's private marketplace. One plugin: the engineering team that builds its products.",
+  "owner": { "name": "Token Fruit" },
+  "plugins": [
+    {
+      "name": "area54",
+      "source": "./",
+      "description": "The Token Fruit engineering team: eight role-scoped agents, seven pipeline commands, a shell guard, and a merge gate that is code rather than judgement."
+    }
+  ]
+}

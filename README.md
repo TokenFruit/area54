@@ -10,8 +10,8 @@ else. Stack decision: [`docs/adr/0001-stack.md`](docs/adr/0001-stack.md).
 
 ## The team
 
-Seven agents in `.claude/agents/`, each with a fresh context, its own tool
-allowlist, and one job:
+Eight agents in `agents/`, each with a fresh context, its own tool allowlist,
+and one job:
 
 | Agent | Job | Output |
 | --- | --- | --- |
@@ -47,6 +47,25 @@ You are the CPO. You run six commands and make two decisions per feature.
    reviewer that silently patches what it finds destroys the signal.
 3. **CI decides whether tests pass.** An agent saying "tests pass" means it ran
    something. `.github/workflows/ci.yml` is the only trustworthy gate.
+
+## How it reaches a product repo
+
+area54 **is** a Claude Code plugin: `.claude-plugin/plugin.json` at the root,
+components discovered by convention from `agents/`, `commands/`, `hooks/` and
+`bin/`. The repo is also its own marketplace, so a product repo installs it by
+name and a prompt fix arrives by version bump.
+
+```
+python -m tools.deploy /path/to/repo
+```
+
+That writes three files and two settings keys — the permission list, the
+constitution, the PR template — and nothing else. The eighteen files that used
+to be copied now live in the plugin. `.claude/TEAM_VERSION` records which
+version a repo has; `claude plugin details area54` says what actually loaded.
+
+area54 installs its own plugin the same way, from its own checkout: the team
+that builds this repo is the artefact product repos get.
 
 Start with [`CLAUDE.md`](CLAUDE.md) — the team constitution — and
 [`docs/roadmap.md`](docs/roadmap.md), which is the only input to everything.

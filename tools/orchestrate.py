@@ -1,6 +1,6 @@
 """Run the published sequence, instead of hoping a human remembers to.
 
-`team/TEAM.md` publishes the pipeline and `.claude/commands/` describe each
+`team/TEAM.md` publishes the pipeline and `commands/` describe each
 step, but nothing executes them: a human reads the prose and decides to comply.
 In one day that produced six skipped steps — `/review` never run on two PRs, a
 handoff announced and never sent, four PRs left in draft after CI went green.
@@ -13,7 +13,7 @@ Status line, an ADR, a branch, a PR's flags, verdicts and checks are the truth.
 
 `--run` dispatches exactly one action and stops — an agent, or marking a PR
 ready. It builds no other command, and `dispatch` refuses to run one. The merge
-gate and `.claude/hooks/guard_bash.py` are what hold the merge itself: nothing
+gate and `hooks/guard_bash.py` are what hold the merge itself: nothing
 here can pass that guard, and nothing here is the reason it holds.
 """
 
@@ -41,7 +41,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 TF = re.compile(r"\bTF-(\d+)\b", re.IGNORECASE)
 BRANCH_TF = re.compile(r"^(?:origin/)?tf-(\d+)-", re.IGNORECASE)
 SPEC_STATUS = re.compile(r"^\*\*Status:\*\*\s*([A-Za-z]+)", re.MULTILINE)
-#: The line the Architect's ADR template opens with (`.claude/agents/architect.md:40`).
+#: The line the Architect's ADR template opens with (`agents/architect.md:40`).
 #: An ADR is claimed by this line and nowhere else — the anchor `BRANCH_TF` is for a PR.
 ADR_IMPLEMENTS = re.compile(r"^\*\*Implements:\*\*(.*)$", re.MULTILINE)
 
@@ -411,7 +411,7 @@ def next_action(item: Item) -> Action:
             "no spec in docs/specs/",
             "agent",
             "product-owner",
-            f"Groom {item.tf} into a buildable spec, following .claude/commands/groom.md.",
+            f"Groom {item.tf} into a buildable spec, following commands/groom.md.",
         )
     if item.spec_status and item.spec_status.lower() == "draft":
         return Action("Awaiting approval", "CPO gate 1 — the spec needs approval", "cpo")
@@ -422,7 +422,7 @@ def next_action(item: Item) -> Action:
             "spec approved, no ADR",
             "agent",
             "architect",
-            f"Write the ADR for {item.tf}, following .claude/commands/design.md.",
+            f"Write the ADR for {item.tf}, following commands/design.md.",
         )
     if not pr and item.merged_pr:
         # Reported, never dispatched: only the CPO ticks the roadmap, and the
@@ -438,7 +438,7 @@ def next_action(item: Item) -> Action:
             "branch exists, no PR" if item.branch else "ADR written, no branch",
             "agent",
             OWNING_BUILDER,
-            f"Build {item.tf} and open a draft PR, following .claude/commands/build.md.",
+            f"Build {item.tf} and open a draft PR, following commands/build.md.",
         )
     if ci == "failing":
         return Action(
@@ -466,7 +466,7 @@ def next_action(item: Item) -> Action:
             "agent",
             # `/review` runs both in parallel; `--run` dispatches one at a time.
             "lead" if "Lead" in missing else "tester",
-            f"Review the PR for {item.tf}, following .claude/commands/review.md. Post the "
+            f"Review the PR for {item.tf}, following commands/review.md. Post the "
             f"verdict to the PR — one in a transcript does not exist.",
         )
     if ci != "green":
@@ -503,7 +503,7 @@ def dispatch(action: Action, item: Item, repo: str) -> list[str]:
     argv element and nothing else, so `gh pr MERGE`, `gh pr merge-queue add`,
     `gh pr --merge` and `sh -c "gh pr merge 29"` all passed it.
 
-    What actually stops a merge is `.claude/hooks/guard_bash.py`, which refuses
+    What actually stops a merge is `hooks/guard_bash.py`, which refuses
     `gh pr merge` without a live authorisation naming that PR at that head. This
     is the narrower claim it can keep: a clause added later that builds some
     other `gh` call does not get to run unread.

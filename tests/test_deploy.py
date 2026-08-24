@@ -1,11 +1,15 @@
 """Tests for the installer.
 
-Deployment is a copy, so drift is the failure to design against. These tests
-mostly check that the installer refuses to do the unsafe thing.
+The team travels as a plugin now, so most of what used to be copied is not
+installed at all. What is left is three files and two settings keys, and drift
+is still the failure to design against: these tests mostly check that the
+installer refuses to do the unsafe thing, and that the plugin is what actually
+carries the team.
 """
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -13,10 +17,13 @@ import pytest
 
 from tools.deploy import (
     ARTEFACT_DIRS,
+    REPO_ROOT,
     VERSION_FILE,
     DeployError,
     install,
     plan,
+    plugin_manifest,
+    plugin_reference,
     read_manifest,
 )
 
@@ -71,12 +78,52 @@ def test_a_first_install_delivers_the_team(tmp_path: Path) -> None:
     target = make_repo(tmp_path)
     install(target)
 
-    assert (target / ".claude" / "agents" / "lead.md").is_file()
-    assert (target / ".claude" / "commands" / "review.md").is_file()
     assert (target / ".claude" / "TEAM.md").is_file()
+    assert (target / ".claude" / "settings.json").is_file()
     assert (target / ".github" / "pull_request_template.md").is_file()
     for directory in ARTEFACT_DIRS:
         assert (target / directory).is_dir()
+
+
+def test_the_team_itself_is_not_copied(tmp_path: Path) -> None:
+    """The whole of TF-003: a prompt fix arrives by version bump, not by copy.
+
+    Eighteen files used to be written here. If any of them come back, the
+    target has two copies of the team that can disagree, and the version bump
+    stops being how a fix travels.
+    """
+    target = make_repo(tmp_path)
+    install(target)
+    for gone in (
+        ".claude/agents",
+        ".claude/commands",
+        ".claude/hooks",
+        ".claude/tools",
+    ):
+        assert not (target / gone).exists(), f"{gone} is copied again"
+
+
+def test_the_target_is_told_where_the_team_comes_from(tmp_path: Path) -> None:
+    """Two keys instead of eighteen files: the marketplace, and the plugin."""
+    target = make_repo(tmp_path)
+    install(target)
+    settings = json.loads((target / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    assert settings["enabledPlugins"] == {plugin_reference(): True}
+    marketplace = plugin_reference().split("@", 1)[1]
+    source = settings["extraKnownMarketplaces"][marketplace]["source"]
+    # A directory source is how area54 loads its own copy, and is meaningless
+    # anywhere else: a target repo has to fetch it.
+    assert source["source"] == "github"
+    assert source["repo"] == "TokenFruit/area54"
+
+
+def test_the_version_file_records_the_plugin_version(tmp_path: Path) -> None:
+    """ "Fixed by version bump" needs the target to say which version it has."""
+    target = make_repo(tmp_path)
+    install(target)
+    recorded = (target / VERSION_FILE).read_text(encoding="utf-8")
+    assert f"version {plugin_manifest()['version']}" in recorded
+    assert "claude plugin update area54" in recorded
 
 
 def test_the_deployed_constitution_says_not_to_edit_it(tmp_path: Path) -> None:
@@ -106,8 +153,8 @@ def test_the_manifest_records_every_installed_file(tmp_path: Path) -> None:
     target = make_repo(tmp_path)
     install(target)
     manifest = read_manifest(target)
-    assert ".claude/agents/lead.md" in manifest
     assert ".claude/TEAM.md" in manifest
+    assert ".claude/settings.json" in manifest
     assert "installed from area54" in (target / VERSION_FILE).read_text(encoding="utf-8")
 
 
@@ -120,8 +167,10 @@ def test_a_local_edit_is_detected_rather_than_silently_reverted(tmp_path: Path) 
     install(target)
     commit_all(target)
 
-    lead = target / ".claude" / "agents" / "lead.md"
-    lead.write_text(lead.read_text(encoding="utf-8") + "\nlocal tweak\n", encoding="utf-8")
+    constitution = target / ".claude" / "TEAM.md"
+    constitution.write_text(
+        constitution.read_text(encoding="utf-8") + "\nlocal tweak\n", encoding="utf-8"
+    )
     commit_all(target)
 
     assert any(c.kind == "locally-edited" for c in plan(target))
@@ -134,12 +183,12 @@ def test_force_overwrites_a_local_edit(tmp_path: Path) -> None:
     install(target)
     commit_all(target)
 
-    lead = target / ".claude" / "agents" / "lead.md"
-    lead.write_text("gutted\n", encoding="utf-8")
+    constitution = target / ".claude" / "TEAM.md"
+    constitution.write_text("gutted\n", encoding="utf-8")
     commit_all(target)
 
     install(target, force=True)
-    assert "Engineering Lead" in lead.read_text(encoding="utf-8")
+    assert "Do not edit it here" in constitution.read_text(encoding="utf-8")
 
 
 def test_check_reports_a_stale_target(tmp_path: Path) -> None:
@@ -163,9 +212,24 @@ def test_settings_are_installed(tmp_path: Path) -> None:
 
     # Merging is not denied by a permission rule any more — the merge gate
     # decides and the guard enforces it. So what a target repo must receive is
-    # the guard itself; settings permitting `gh pr merge` without it would be
-    # an ungated merge.
-    assert (target / ".claude" / "hooks" / "guard_bash.py").is_file()
+    # the guard itself, and that now arrives in the plugin rather than as a
+    # copied file. What has to hold is that the plugin is enabled: settings
+    # permitting `gh pr merge` with no plugin behind them is an ungated merge.
+    assert loaded["enabledPlugins"][plugin_reference()] is True
+
+
+def test_the_permission_list_is_the_one_area54_runs_under(tmp_path: Path) -> None:
+    """The rules an agent runs under here are the rules it runs under anywhere.
+
+    Not a copied file: `plugin.json` accepts a `settings` record, passes
+    validation with it, and ignores it at load time — so the list is generated
+    into the target rather than shipped in the manifest.
+    """
+    target = make_repo(tmp_path)
+    install(target)
+    installed = json.loads((target / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    ours = json.loads((REPO_ROOT / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    assert installed["permissions"] == ours["permissions"]
 
 
 def test_a_preexisting_target_file_is_not_clobbered(tmp_path: Path) -> None:
@@ -189,3 +253,245 @@ def test_force_replaces_a_preexisting_file(tmp_path: Path) -> None:
 
     install(target, force=True)
     assert '"theirs"' not in (target / ".claude" / "settings.json").read_text(encoding="utf-8")
+
+
+# --- migrating a repo that has the old copied team ------------------------
+
+
+def make_old_target(tmp_path: Path) -> Path:
+    """A repo deployed by the copying installer, with its manifest."""
+    import hashlib
+
+    target = make_repo(tmp_path, "oldtarget")
+    copied = {
+        ".claude/agents/lead.md": "you are the lead\n",
+        ".claude/commands/review.md": "review it\n",
+        ".claude/hooks/record_event.py": "print('x')\n",
+        ".claude/tools/merge_gate.py": "print('gate')\n",
+    }
+    lines = ["# The Token Fruit engineering team, installed from area54 @ deadbee"]
+    for rel, body in copied.items():
+        path = target / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+        lines.append(f"{hashlib.sha256(body.encode()).hexdigest()[:16]} {rel}")
+    (target / VERSION_FILE).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    commit_all(target)
+    return target
+
+
+def test_an_upgrade_removes_the_team_it_used_to_copy(tmp_path: Path) -> None:
+    """Every already-deployed repo is in this state; migrating them is the point.
+
+    A stale `.claude/agents/` is not merely untidy — Claude Code discovers it by
+    convention, so eight frozen prompts keep loading beside the plugin's and the
+    repo runs two teams that can disagree.
+    """
+    target = make_old_target(tmp_path)
+    install(target)
+    for gone in (
+        ".claude/agents/lead.md",
+        ".claude/commands/review.md",
+        ".claude/hooks/record_event.py",
+        ".claude/tools/merge_gate.py",
+    ):
+        assert not (target / gone).exists(), gone
+
+
+def test_an_upgrade_leaves_no_empty_component_directory(tmp_path: Path) -> None:
+    """An empty `.claude/agents` is still a component directory."""
+    target = make_old_target(tmp_path)
+    install(target)
+    for gone in (".claude/agents", ".claude/commands", ".claude/hooks", ".claude/tools"):
+        assert not (target / gone).exists(), gone
+
+
+def test_the_upgrade_is_reported_rather_than_silent(tmp_path: Path) -> None:
+    target = make_old_target(tmp_path)
+    superseded_paths = [c.path for c in plan(target) if c.kind == "superseded"]
+    assert ".claude/agents/lead.md" in superseded_paths
+    assert len(superseded_paths) == 4
+
+
+def test_only_files_this_installer_wrote_are_removed(tmp_path: Path) -> None:
+    """Anything the manifest does not claim belongs to the target repo."""
+    target = make_old_target(tmp_path)
+    theirs = target / ".claude" / "their-own-notes.md"
+    theirs.write_text("ours, not yours\n", encoding="utf-8")
+    commit_all(target)
+
+    install(target)
+    assert theirs.read_text(encoding="utf-8") == "ours, not yours\n"
+
+
+def test_a_second_upgrade_is_a_no_op(tmp_path: Path) -> None:
+    target = make_old_target(tmp_path)
+    install(target)
+    commit_all(target)
+    assert install(target) == []
+
+
+# --- the marketplace name is a global key ---------------------------------
+
+
+def test_a_colliding_marketplace_name_is_reported(tmp_path: Path) -> None:
+    """Why the first live verification of this installer ran the wrong commit.
+
+    `extraKnownMarketplaces` is not per-project. area54 registers `tokenfruit`
+    as its own working copy; a target asking for the same name gets that copy
+    rather than GitHub, silently, because the first registration wins.
+    """
+    from tools.deploy import marketplace_collision
+
+    registry = tmp_path / "known_marketplaces.json"
+    registry.write_text(
+        json.dumps(
+            {"tokenfruit": {"source": {"source": "directory", "path": "/somewhere/area-54"}}}
+        ),
+        encoding="utf-8",
+    )
+    warning = marketplace_collision(registry)
+    assert warning is not None
+    assert "/somewhere/area-54" in warning
+    assert "first registration wins" in warning
+
+
+def test_a_matching_registration_is_not_reported(tmp_path: Path) -> None:
+    from tools.deploy import MARKETPLACE_SOURCE, marketplace_collision
+
+    registry = tmp_path / "known_marketplaces.json"
+    registry.write_text(json.dumps({"tokenfruit": {"source": MARKETPLACE_SOURCE}}), "utf-8")
+    assert marketplace_collision(registry) is None
+
+
+def test_an_unregistered_name_is_not_reported(tmp_path: Path) -> None:
+    from tools.deploy import marketplace_collision
+
+    registry = tmp_path / "known_marketplaces.json"
+    registry.write_text(json.dumps({"someone-else": {"source": {"source": "npm"}}}), "utf-8")
+    assert marketplace_collision(registry) is None
+    assert marketplace_collision(tmp_path / "absent.json") is None
+
+
+# --- the manifest lives in the target, so it is not trusted input ---------
+
+
+def test_a_traversing_manifest_entry_cannot_delete_outside_the_target(tmp_path: Path) -> None:
+    """`.claude/TEAM_VERSION` is a file in the target, however it got there.
+
+    Demonstrated in review: `../victim.txt` in a manifest line was deleted, and
+    the rmdir walk then climbed *above* the target removing whatever it emptied,
+    because it stopped on equality with a directory it could never reach again.
+    Nothing outside the target is in its git repo, so nothing was recoverable.
+    """
+    victim = tmp_path / "victim.txt"
+    victim.write_text("not yours\n", encoding="utf-8")
+    victim_dir = tmp_path / "victimdir"
+    victim_dir.mkdir()
+    (victim_dir / "only.txt").write_text("nor this\n", encoding="utf-8")
+
+    target = make_repo(tmp_path)
+    (target / ".claude").mkdir(exist_ok=True)
+    (target / VERSION_FILE).write_text(
+        "# installed from area54 @ deadbee\n"
+        "deadbeef ../victim.txt\n"
+        "cafebabe ../victimdir/only.txt\n",
+        encoding="utf-8",
+    )
+    commit_all(target)
+
+    assert [c.path for c in plan(target) if c.kind.startswith("superseded")] == []
+    install(target)
+
+    assert victim.is_file(), "deleted a file outside the target"
+    assert (victim_dir / "only.txt").is_file()
+    assert victim_dir.is_dir(), "removed a directory outside the target"
+
+
+def test_an_absolute_manifest_entry_is_refused(tmp_path: Path) -> None:
+    outside = tmp_path / "elsewhere.txt"
+    outside.write_text("mine\n", encoding="utf-8")
+    target = make_repo(tmp_path)
+    (target / ".claude").mkdir(exist_ok=True)
+    (target / VERSION_FILE).write_text(f"deadbeef {outside}\n", encoding="utf-8")
+    commit_all(target)
+
+    install(target)
+    assert outside.is_file()
+
+
+def test_the_target_root_itself_is_never_removed(tmp_path: Path) -> None:
+    target = make_repo(tmp_path)
+    (target / ".claude").mkdir(exist_ok=True)
+    (target / VERSION_FILE).write_text("deadbeef .\n", encoding="utf-8")
+    commit_all(target)
+
+    install(target)
+    assert target.is_dir()
+
+
+def test_a_superseded_file_the_target_edited_is_not_destroyed_silently(tmp_path: Path) -> None:
+    """ "We refuse to discard your edit" and "we discard it silently" should not
+    both be true of one command."""
+    target = make_old_target(tmp_path)
+    lead = target / ".claude" / "agents" / "lead.md"
+    lead.write_text("we customised this\n", encoding="utf-8")
+    commit_all(target)
+
+    assert any(c.kind == "superseded-edited" for c in plan(target))
+    with pytest.raises(DeployError, match="edited in the target"):
+        install(target)
+    assert lead.is_file()
+
+    install(target, force=True)
+    assert not lead.exists()
+
+
+def test_the_collision_warning_survives_as_one_annotation() -> None:
+    """`::warning::` is parsed up to the first newline; the remedy fell out."""
+    from tools.deploy import _one_line
+
+    assert "\n" not in _one_line("first line\nsecond line")
+    assert "%0A" in _one_line("first line\nsecond line")
+
+
+def test_a_manifest_entry_naming_a_directory_does_not_crash(tmp_path: Path) -> None:
+    """It raised IsADirectoryError out of `plan()`, so `--check` crashed.
+
+    Fail-safe — the target was unmodified — but a crash is not a diagnosis, and
+    the person holding the malformed manifest learns nothing from a traceback.
+    """
+    target = make_repo(tmp_path)
+    (target / ".claude").mkdir(exist_ok=True)
+    (target / ".claude" / "adirectory").mkdir()
+    (target / VERSION_FILE).write_text("deadbeef .claude/adirectory\n", encoding="utf-8")
+    commit_all(target)
+
+    assert [c.path for c in plan(target) if c.kind.startswith("superseded")] == []
+    install(target)
+    assert (target / ".claude" / "adirectory").is_dir()
+
+
+def test_prune_refuses_a_traversing_path_on_its_own(tmp_path: Path) -> None:
+    """The containment clause inside `_prune` must be load-bearing by itself.
+
+    Mutation testing showed it unreachable: `_contained` filters everything at
+    the single call site, so `_contained` was a single point of failure and a
+    second caller of `_prune` would reintroduce the traversal with no test to
+    catch it. This calls `_prune` directly, with exactly the input `_contained`
+    would have removed.
+    """
+    from tools.deploy import _prune
+
+    victim = tmp_path / "victim.txt"
+    victim.write_text("not yours\n", encoding="utf-8")
+    victim_dir = tmp_path / "victimdir"
+    victim_dir.mkdir()
+    (victim_dir / "only.txt").write_text("nor this\n", encoding="utf-8")
+
+    target = make_repo(tmp_path)
+    _prune(target, ["../victim.txt", "../victimdir/only.txt", str(victim)])
+
+    assert victim.is_file()
+    assert (victim_dir / "only.txt").is_file()
+    assert victim_dir.is_dir()
