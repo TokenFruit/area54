@@ -114,7 +114,7 @@ def test_the_target_is_told_where_the_team_comes_from(tmp_path: Path) -> None:
     # A directory source is how area54 loads its own copy, and is meaningless
     # anywhere else: a target repo has to fetch it.
     assert source["source"] == "github"
-    assert source["repo"] == "your-org/area54"
+    assert source["repo"] == "TokenFruit/area54"
 
 
 def test_the_version_file_records_the_plugin_version(tmp_path: Path) -> None:
