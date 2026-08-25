@@ -2,7 +2,7 @@
 
 **This file is deployed. Do not edit it here.**
 
-It is installed from [area54](https://github.com/your-org/area54), the repo
+It is installed from [area54](https://github.com/TokenFruit/area54), the repo
 that builds and maintains this team, and the next deployment overwrites whatever
 you change. If a rule below is wrong for this project, fix it in area54 so every
 project gets the fix — or, if the rule genuinely should differ here, say so in

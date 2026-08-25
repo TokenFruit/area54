@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "description": "The area54 engineering team: eight role-scoped agents, seven pipeline commands, a shell guard, and a merge gate that is code rather than judgement.",
   "author": { "name": "area54" },
-  "homepage": "https://github.com/your-org/area54",
-  "repository": "https://github.com/your-org/area54",
-  "license": "UNLICENSED",
+  "homepage": "https://github.com/TokenFruit/area54",
+  "repository": "https://github.com/TokenFruit/area54",
+  "license": "MIT",
   "keywords": ["agents", "pipeline", "code-review", "merge-gate"]
 }
